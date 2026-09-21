@@ -35,8 +35,9 @@ public sealed class AssemblyFacts : IDisposable
     public int PassedOver { get; init; }
 
     /// <summary>
-    /// When the oldest assembly actually read was written. Source newer than
-    /// this describes code the metadata has never seen.
+    /// When the oldest assembly actually read was written. Reported, not used
+    /// for judging source: each assembly is compared against its own build
+    /// time, since a build rewrites only what changed.
     /// </summary>
     public DateTime Built { get; init; }
 
@@ -200,7 +201,7 @@ public sealed class AssemblyFacts : IDisposable
             {
                 var location = source?.Locate(type);
                 var fragment = location is { } at && source is not null
-                    ? source.Fragment(at.File, at.First, at.Last, type.Name, Built)
+                    ? source.Fragment(at.File, at.First, at.Last, type.Name)
                     : null;
 
                 types.Add(new TypeNode
@@ -782,12 +783,18 @@ internal sealed class SourceIndex : IDisposable
     private readonly MetadataReaderProvider? _provider;
     private readonly MetadataReader? _reader;
     private readonly string _root;
+    private readonly DateTime _built;
 
-    private SourceIndex(string root, MetadataReaderProvider? provider, MetadataReader? reader)
+    private SourceIndex(
+        string root,
+        MetadataReaderProvider? provider,
+        MetadataReader? reader,
+        DateTime built)
     {
         _root = root;
         _provider = provider;
         _reader = reader;
+        _built = built;
     }
 
     /// <summary>Opens the PDB beside an assembly, or returns an index that knows nothing.</summary>
@@ -795,20 +802,36 @@ internal sealed class SourceIndex : IDisposable
     {
         var pdb = Path.ChangeExtension(assemblyPath, ".pdb");
 
+        // When this assembly was built, not when the repository last built
+        // anything. A build rewrites only the projects that changed, so the
+        // oldest assembly in a repository is always some project nobody has
+        // touched for months — measuring against it would hide the source of
+        // every file newer than that, which is most of them.
+        DateTime built;
+
+        try
+        {
+            built = File.GetLastWriteTimeUtc(assemblyPath);
+        }
+        catch (IOException)
+        {
+            built = DateTime.MinValue;
+        }
+
         if (!File.Exists(pdb))
         {
-            return new SourceIndex(root, null, null);
+            return new SourceIndex(root, null, null, built);
         }
 
         try
         {
             var stream = File.OpenRead(pdb);
             var provider = MetadataReaderProvider.FromPortablePdbStream(stream, MetadataStreamOptions.PrefetchMetadata);
-            return new SourceIndex(root, provider, provider.GetMetadataReader());
+            return new SourceIndex(root, provider, provider.GetMetadataReader(), built);
         }
         catch (Exception e) when (e is BadImageFormatException or IOException)
         {
-            return new SourceIndex(root, null, null);
+            return new SourceIndex(root, null, null, built);
         }
     }
 
@@ -864,7 +887,6 @@ internal sealed class SourceIndex : IDisposable
         int first,
         int last,
         string typeName,
-        DateTime built,
         int limit = 400)
     {
         var path = Path.Combine(_root, relativeFile);
@@ -883,7 +905,7 @@ internal sealed class SourceIndex : IDisposable
             // metadata has never seen, and showing the two side by side puts
             // a week-old declaration next to today's body. No text is better
             // than contradictory text.
-            if (built != DateTime.MinValue && File.GetLastWriteTimeUtc(path) > built)
+            if (_built != DateTime.MinValue && File.GetLastWriteTimeUtc(path) > _built)
             {
                 return null;
             }

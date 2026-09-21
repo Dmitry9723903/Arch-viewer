@@ -125,7 +125,9 @@ Rules of the format:
   edge between the two types that make the reference. Both are true; they are
   one boundary broken. Counts shown to the reader are crossings — a pair of
   containers and the rule between them — while the panel lists every reference
-  that realises it, because that is what gets fixed.
+  that realises it, because that is what gets fixed. The terminal reports the
+  same number as the screen, with the reference count beside it: two places
+  counting differently is one of them lying.
 - **`line` is optional.** Without PDBs there is no jump to source; everything
   else still works.
 - **An edge names any container, not only a childless one.** An edge between
@@ -240,6 +242,12 @@ describe code that no longer exists.
 from the PDB of a build; the text comes from disk now. Where they disagree,
 the panel would put a stale declaration next to a current body. No text is
 better than contradictory text, and the run says how many types are affected.
+
+Each file is compared against **the assembly that declares its type**, not
+against the repository's oldest one. A build rewrites only the projects that
+changed, so the oldest assembly anywhere is always some project nobody has
+touched for months; measuring against it would suppress the text of every
+file newer than that, which is most of them, all of them correct.
 
 **Only portable PDBs are read.** A repository built on .NET Framework writes
 Windows PDBs, and no source appears at all — the graph, the types and their

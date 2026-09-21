@@ -73,13 +73,16 @@ public static class Program
         string outPath,
         AssemblyFacts facts)
     {
-        var violations = model.Edges.Count(e => e.Violates is not null);
+        var references = model.Edges.Count(e => e.Violates is not null);
+        var violations = Crossings(model);
         var types = Count(model.Nodes);
 
         Console.WriteLine($"projects   {projects}");
         Console.WriteLine($"assemblies {assemblies} read");
         Console.WriteLine($"types      {types}");
-        Console.WriteLine($"edges      {model.Edges.Count}, {violations} violating");
+        Console.WriteLine(references == violations
+            ? $"edges      {model.Edges.Count}, {violations} crossing a boundary"
+            : $"edges      {model.Edges.Count}, {violations} crossings ({references} references)");
         Console.WriteLine($"written    {outPath}");
 
         if (facts.PassedOver > 0)
@@ -118,6 +121,51 @@ public static class Program
 
     private static int Count(IReadOnlyList<Node> nodes) =>
         nodes.Sum(n => n.Types.Count + Count(n.Children));
+
+    /// <summary>
+    /// Boundaries broken, not references breaking them. The same crossing is
+    /// recorded once between the projects and again between the types that
+    /// make the reference; the screen counts crossings, and the terminal must
+    /// say the same number or one of the two is lying.
+    /// </summary>
+    private static int Crossings(Model model)
+    {
+        var owner = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        void Index(Node node)
+        {
+            foreach (var type in node.Types)
+            {
+                owner[type.Id] = node.Id;
+            }
+
+            foreach (var child in node.Children)
+            {
+                Index(child);
+            }
+        }
+
+        foreach (var node in model.Nodes)
+        {
+            Index(node);
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var edge in model.Edges)
+        {
+            if (edge.Violates is null)
+            {
+                continue;
+            }
+
+            var from = owner.GetValueOrDefault(edge.From, edge.From);
+            var to = owner.GetValueOrDefault(edge.To, edge.To);
+            seen.Add($"{from}\u0000{to}\u0000{edge.Violates}");
+        }
+
+        return seen.Count;
+    }
 
     private static string? Option(string[] args, string name)
     {
