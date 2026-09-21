@@ -144,6 +144,25 @@ Rules of the format:
 A hand-written file beside the repository being read. It declares how to
 group containers and which dependencies are forbidden.
 
+### One property per level
+
+A level of grouping answers one question, and every container on that level
+answers the same one. Mixing them — some boxes on a row saying where a project
+lives, others saying what it is — leaves the reader unable to tell which is
+which, and nothing on the screen says there are two kinds of thing there.
+
+This is easy to get wrong through a fallback. Group by a declared property,
+fall back to the directory when it is absent, and the row now holds both. The
+fix is not to push the fallback down a level: then the *next* row holds
+modules under one parent and directories under another, which is the same
+fault one floor lower. Group by the physical property first and the declared
+one beneath it, so each level stays one question.
+
+The cost is real and worth stating: whatever is on the first level is what the
+reader sees first, and a level whose containers mostly have one child each is
+a click that shows nothing new. Choose which of the two matters more for the
+repository at hand; the tool does not choose.
+
 ### Where the structure lives
 
 Two repositories can both be .NET and keep their structure in different
