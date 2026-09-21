@@ -187,12 +187,11 @@ public sealed class AssemblyFacts : IDisposable
 
         foreach (var type in found)
         {
-            if (!type.IsPublic && !type.IsNestedPublic)
-            {
-                continue;
-            }
-
-            if (type.Name.StartsWith('<'))
+            // Compiler-generated types only. Internal types were skipped here
+            // once, which left a host project showing one type out of six: for
+            // an application the internal ones are the whole of it, and a map
+            // that omits them describes a repository nobody wrote.
+            if (type.Name.StartsWith('<') || type.Name.Contains(">g__", StringComparison.Ordinal))
             {
                 continue;
             }
@@ -209,6 +208,7 @@ public sealed class AssemblyFacts : IDisposable
                     Id = type.FullName ?? type.Name,
                     Name = Pretty(type.Name),
                     Stereotype = Stereotype(type),
+                    Visibility = Visibility(type),
                     File = location?.File,
                     Line = fragment?.Start ?? location?.First,
                     EndLine = location?.Last,
@@ -225,6 +225,7 @@ public sealed class AssemblyFacts : IDisposable
                     Id = type.FullName ?? type.Name,
                     Name = Pretty(type.Name),
                     Stereotype = "class",
+                    Visibility = "unknown",
                 });
             }
         }
@@ -269,7 +270,7 @@ public sealed class AssemblyFacts : IDisposable
 
         foreach (var field in Listed(() => type.GetFields(flags)))
         {
-            if (!field.IsPublic)
+            if (field.Name.StartsWith('<'))
             {
                 continue;
             }
@@ -555,6 +556,29 @@ public sealed class AssemblyFacts : IDisposable
     private static bool Unresolvable(Exception e) =>
         e is FileNotFoundException or TypeLoadException or BadImageFormatException
             or MissingMethodException or NotSupportedException or InvalidOperationException;
+
+    /// <summary>How widely a type is visible.</summary>
+    private static string Visibility(Type type)
+    {
+        try
+        {
+            if (type.IsPublic || type.IsNestedPublic)
+            {
+                return "public";
+            }
+
+            if (type.IsNestedPrivate)
+            {
+                return "private";
+            }
+
+            return type.IsNestedFamily || type.IsNestedFamORAssem ? "protected" : "internal";
+        }
+        catch (Exception e) when (Unresolvable(e))
+        {
+            return "unknown";
+        }
+    }
 
     private static string Stereotype(Type type)
     {

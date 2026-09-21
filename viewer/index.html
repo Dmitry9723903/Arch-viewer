@@ -54,6 +54,8 @@
   .type .name { font-weight: 600; }
   .type .tri { color: var(--dim); font-size: 10px; width: 10px; }
   .type .st { color: var(--dim); font-size: 12px; }
+  .type .vis { color: var(--dim); font-size: 11px; border: 1px solid var(--line);
+               border-radius: 3px; padding: 0 4px; }
   .member { color: var(--dim); font-size: 12px;
             font-family: ui-monospace, Menlo, Consolas, monospace; padding-left: 10px; }
   a.src { color: var(--accent); font-size: 12px; text-decoration: none;
@@ -260,8 +262,11 @@ function drawTypes(canvas, owner, types) {
     const sub = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     sub.setAttribute('class', 'sub');
     sub.setAttribute('x', x + 12); sub.setAttribute('y', y + 40);
-    sub.textContent = [t.stereotype, (t.members || []).length ? (t.members.length + ' members') : null]
-      .filter(Boolean).join(' · ');
+    sub.textContent = [
+      t.visibility && t.visibility !== 'public' ? t.visibility : null,
+      t.stereotype,
+      (t.members || []).length ? (t.members.length + ' members') : null,
+    ].filter(Boolean).join(' · ');
 
     g.append(r, label, sub);
     g.addEventListener('click', ev => {
@@ -460,7 +465,9 @@ function select(n) {
       html += `<div class="type${open ? ' open' : ''}">`;
       html += `<div class="head" data-type="${i}">`;
       html += `<span class="tri">${open ? '▾' : '▸'}</span>`;
-      html += `<span class="name">${esc(t.name)}</span> <span class="st">${esc(t.stereotype)}</span></div>`;
+      html += `<span class="name">${esc(t.name)}</span> <span class="st">${esc(t.stereotype)}</span>`;
+      if (t.visibility && t.visibility !== 'public') html += ` <span class="vis">${esc(t.visibility)}</span>`;
+      html += `</div>`;
       if (open) {
         if (t.file) {
           const abs = MODEL.root + '/' + t.file;

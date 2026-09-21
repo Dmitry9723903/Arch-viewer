@@ -62,6 +62,12 @@ public sealed class TypeNode
     /// <summary>class, interface, record, enum, struct or abstract.</summary>
     public required string Stereotype { get; init; }
 
+    /// <summary>
+    /// public, internal, protected or private. A map of structure shows what
+    /// is there; visibility is a property of a type, not a reason to hide it.
+    /// </summary>
+    public required string Visibility { get; init; }
+
     /// <summary>Source file, relative to the root, when a PDB supplied one.</summary>
     public string? File { get; init; }
 

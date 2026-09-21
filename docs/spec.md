@@ -114,6 +114,10 @@ Rules of the format:
   nests and expands; it does not interpret.
 - **`role`** is the second axis: what the container is *within* its parent.
   Policy rules may match on it.
+- **`visibility`** on a type: public, internal, protected or private. Every
+  type declared in an assembly is in the model. A map of structure shows what
+  is there; internal is a property of a type, not a reason to leave it out —
+  and for an application project the internal types are the whole of it.
 - **`violates` carries the rule's id**, not a boolean. A red arrow that
   cannot say which rule it broke is not actionable.
 - **The same crossing may be recorded more than once.** An adapter reaching
