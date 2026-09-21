@@ -139,6 +139,18 @@ public sealed class Rule
 
     /// <summary>What those containers may reference. Anything else violates.</summary>
     public IReadOnlyList<Selector> MayReference { get; init; } = Array.Empty<Selector>();
+
+    /// <summary>
+    /// Kinds of reference this rule judges — dependency, package,
+    /// association, implements, inheritance. Empty means all of them.
+    ///
+    /// A rule written about namespaces has nothing to say about a project
+    /// reference: a project reference names projects, and a whitelist of
+    /// namespaces cannot contain one. Without this, such a rule reddens every
+    /// project reference the subject makes, and the author of the policy finds
+    /// out from a false arrow.
+    /// </summary>
+    public IReadOnlyList<string> Kinds { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>

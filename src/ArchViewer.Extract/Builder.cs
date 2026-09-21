@@ -143,7 +143,7 @@ public static class Builder
                     From = from,
                     To = to,
                     Kind = kind,
-                    Violates = crosses ? Rules.Check(source, target, policy) : null,
+                    Violates = crosses ? Rules.Check(source, target, policy, kind) : null,
                 });
             }
         }
@@ -208,7 +208,7 @@ public static class Builder
             From = from.Id,
             To = to.Id,
             Kind = kind,
-            Violates = Rules.Check(from, to, policy),
+            Violates = Rules.Check(from, to, policy, kind),
         });
     }
 }
@@ -368,10 +368,16 @@ internal static class Rules
     /// <summary>
     /// Id of the first rule the reference breaks, or null when it breaks none.
     /// </summary>
-    public static string? Check(MutableNode from, MutableNode to, Policy policy)
+    public static string? Check(MutableNode from, MutableNode to, Policy policy, string kind)
     {
         foreach (var rule in policy.Rules)
         {
+            if (rule.Kinds.Count > 0
+                && !rule.Kinds.Contains(kind, StringComparer.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
             if (!Matches(rule.Subject, from, from, policy))
             {
                 continue;
