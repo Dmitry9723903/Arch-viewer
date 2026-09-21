@@ -126,24 +126,38 @@ public static class Builder
             foreach (var (from, to, kind) in facts.TypeEdges(placement.Project.Name, known))
             {
                 if (!holder.TryGetValue(from, out var source)
-                    || !holder.TryGetValue(to, out var target)
-                    || ReferenceEquals(source, target))
+                    || !holder.TryGetValue(to, out var target))
                 {
                     continue;
                 }
+
+                // A reference that stays inside the subject — to itself, or to
+                // a container nested within it — crosses no boundary, so no
+                // rule about boundaries applies. The edge is kept: "who sits
+                // on this base class" is a question worth answering, and it is
+                // usually answered within one namespace.
+                var crosses = !Encloses(source, target) && !Encloses(target, source);
 
                 edges.Add(new Edge
                 {
                     From = from,
                     To = to,
                     Kind = kind,
-                    Violates = Rules.Check(source, target, policy),
+                    Violates = crosses ? Rules.Check(source, target, policy) : null,
                 });
             }
         }
 
         return edges;
     }
+
+    /// <summary>
+    /// Whether one container is the other or holds it somewhere beneath.
+    /// </summary>
+    private static bool Encloses(MutableNode outer, MutableNode inner) =>
+        ReferenceEquals(outer, inner)
+        || inner.Id.StartsWith(outer.Id + ".", StringComparison.Ordinal)
+        || inner.Id.StartsWith(outer.Id + "/", StringComparison.Ordinal);
 
     private static IReadOnlyList<Edge> BuildEdges(
         IReadOnlyList<Placement> placements,
@@ -352,7 +366,17 @@ internal static class Rules
             return false;
         }
 
-        if (selector.Id is not null && !string.Equals(selector.Id, node.Id, StringComparison.Ordinal))
+        // Naming a container means naming what is inside it. Allowing
+        // "CIP.Platform" but not "CIP.Platform.Time" is a distinction nobody
+        // intends, and every policy written before types had containers relied
+        // on the two being the same thing.
+        if (selector.Id is not null && !SitsUnder(node.Id, selector.Id))
+        {
+            return false;
+        }
+
+        if (selector.IdExactly is not null
+            && !string.Equals(selector.IdExactly, node.Id, StringComparison.Ordinal))
         {
             return false;
         }

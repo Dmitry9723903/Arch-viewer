@@ -149,8 +149,17 @@ public sealed class Selector
     /// <summary>Required role, or null for any.</summary>
     public string? Role { get; init; }
 
-    /// <summary>Required id, or null for any.</summary>
+    /// <summary>
+    /// Required id — the container named, or anything beneath it. Naming a
+    /// container means naming what is inside it.
+    /// </summary>
     public string? Id { get; init; }
+
+    /// <summary>
+    /// Required id, matched exactly. For the rare rule that means this
+    /// container and nothing nested within it.
+    /// </summary>
+    public string? IdExactly { get; init; }
 
     /// <summary>
     /// Required label — the container's own name, without the path above it.

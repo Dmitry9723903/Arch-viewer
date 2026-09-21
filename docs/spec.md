@@ -173,11 +173,39 @@ Only references between types the model already knows are recorded. A type
 from a framework or a package is not a boundary of this repository and does
 not become a node.
 
+**References that stay inside a container are recorded but never judged.** A
+type referring to itself, or to something nested within its own container,
+crosses no boundary, and a rule about boundaries has nothing to say about it.
+The edge is kept because "who sits on this base class" is worth answering and
+is usually answered within one namespace.
+
+#### What this does not see
+
+Named here because an assumption left unwritten is how the reader is misled.
+
+**Bodies of methods are not read.** Only what a type inherits, implements and
+holds. A composition root that registers thirty implementations produces no
+edges at all: it names them inside a method. So a rule of the form "nothing
+but the composition root may reference the implementations" cannot be checked
+by this model, and a repository whose wiring lives in `AddScoped` calls will
+look less connected than it is.
+
+**A reference obtained transitively looks the same as a direct one.** A
+project declaring one project reference may still use a type that arrives
+through it, and the edge is recorded against the type's real owner. This is a
+feature — it is how the tool sees what project-level checks cannot — but it
+means an edge here does not imply a `ProjectReference` there.
+
 **Rules are applied to the containers, not the types.** A rule speaks about
 boundaries, and a type's boundary is the container it sits in — so
 `"subject": { "name": "Controllers" }` constrains every type in that
 namespace, and the violating edge is reported between the two types that
 actually make the reference.
+
+`name` matches a label wherever it occurs. A repository with `Controllers`
+under both its API and its tests has two containers by that name, and a rule
+written about one silently governs the other. Where that is not intended,
+`under` or `id` names the one meant.
 
 ```json
 {
