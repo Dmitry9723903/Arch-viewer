@@ -56,10 +56,17 @@ public sealed class GroupRule
     public required string Kind { get; init; }
 
     /// <summary>
-    /// Where the group name comes from: path-segment, name-part or
-    /// assembly-attribute.
+    /// Where the group name comes from: path-segment, name-part,
+    /// assembly-attribute or literal.
     /// </summary>
     public required string From { get; init; }
+
+    /// <summary>
+    /// The group name itself, when <see cref="From"/> is literal. Used by a
+    /// fallback that must say "this was not declared" rather than substitute
+    /// some other property and pass it off as the declared one.
+    /// </summary>
+    public string? Value { get; init; }
 
     /// <summary>Which path segment, counted from the repository root.</summary>
     public int Index { get; init; }

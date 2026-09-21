@@ -19,6 +19,7 @@ public static class Builder
         var roots = new List<Node>();
         var byPath = new Dictionary<string, MutableNode>(StringComparer.Ordinal);
         var top = new List<MutableNode>();
+        _ = policy;
 
         foreach (var placement in placements)
         {
@@ -26,13 +27,13 @@ public static class Builder
             var path = "";
             MutableNode? parent = null;
 
-            for (var level = 0; level < placement.Groups.Count; level++)
+            foreach (var group in placement.Groups)
             {
-                path = path.Length == 0 ? placement.Groups[level] : $"{path}/{placement.Groups[level]}";
+                path = path.Length == 0 ? group.Name : $"{path}/{group.Name}";
 
                 if (!byPath.TryGetValue(path, out var node))
                 {
-                    node = new MutableNode(path, placement.Groups[level], policy.Group[level].Kind);
+                    node = new MutableNode(path, group.Name, group.Kind);
                     byPath[path] = node;
                     parentList.Add(node);
                 }
@@ -46,7 +47,7 @@ public static class Builder
                 Role = placement.Role,
                 Project = placement.Project.RelativePath,
                 Types = facts.Types(placement.Project.Name),
-                GroupPath = placement.Groups,
+                GroupPath = placement.Groups.Select(g => g.Name).ToList(),
             };
 
             parentList.Add(leaf);

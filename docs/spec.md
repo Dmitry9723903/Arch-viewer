@@ -151,8 +151,17 @@ group containers and which dependencies are forbidden.
 module container as the subject. Without it, the second rule cannot be
 written at all.
 
-Grouping sources available to `group`: `path-segment`, `project`,
-`name-suffix`, `assembly-attribute` (attribute type and property named).
+Grouping sources available to `group`: `path-segment`, `name-part`,
+`assembly-attribute` (attribute and constructor argument named), and
+`literal` (the name given outright).
+
+A level may carry a `fallback` — another source, used when the first yields
+nothing. **A fallback must not substitute a different property for the one
+that was asked for.** Falling back from "the block this assembly declares" to
+"the directory it sits in" puts declared and physical grouping side by side on
+one row, and the reader cannot tell which is which. Fall back to a `literal`
+that says the declaration is missing; that is information, whereas a
+substituted directory is a quiet lie.
 
 ---
 

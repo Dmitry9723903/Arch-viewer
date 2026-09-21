@@ -1,9 +1,16 @@
 namespace ArchViewer.Extract;
 
 /// <summary>
-/// Where a project ends up: the chain of group names above it, outermost first.
+/// One level of grouping as it actually resolved: the name, and the kind of
+/// the rule that produced it. A fallback may describe a different sort of
+/// thing than the rule it stands in for, and saying so is the point.
 /// </summary>
-public sealed record Placement(ProjectFile Project, IReadOnlyList<string> Groups, string? Role);
+public sealed record Group(string Name, string Kind);
+
+/// <summary>
+/// Where a project ends up: the chain of groups above it, outermost first.
+/// </summary>
+public sealed record Placement(ProjectFile Project, IReadOnlyList<Group> Groups, string? Role);
 
 /// <summary>
 /// Applies the policy's grouping levels to the projects that were found.
@@ -22,12 +29,11 @@ public static class Grouping
 
         foreach (var project in projects)
         {
-            var groups = new List<string>();
+            var groups = new List<Group>();
 
             foreach (var level in policy.Group)
             {
-                var name = NameFor(project, level, facts);
-                groups.Add(string.IsNullOrWhiteSpace(name) ? "(ungrouped)" : name!);
+                groups.Add(GroupFor(project, level, facts));
             }
 
             placements.Add(new Placement(project, groups, RoleFor(project)));
@@ -46,22 +52,30 @@ public static class Grouping
         return parts.Length > 1 ? parts[^1].ToLowerInvariant() : null;
     }
 
+    private static Group GroupFor(ProjectFile project, GroupRule level, AssemblyFacts facts)
+    {
+        var name = NameFor(project, level, facts);
+
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            return new Group(name!, level.Kind);
+        }
+
+        return level.Fallback is null
+            ? new Group("(ungrouped)", level.Kind)
+            : GroupFor(project, level.Fallback, facts);
+    }
+
     private static string? NameFor(ProjectFile project, GroupRule level, AssemblyFacts facts)
     {
-        var name = level.From switch
+        return level.From switch
         {
             "path-segment" => Segment(project.RelativePath, level.Index),
             "name-part" => Part(project.Name, level.Part),
             "assembly-attribute" => facts.Attribute(project.Name, level.Attribute, level.Argument),
+            "literal" => level.Value,
             _ => null,
         };
-
-        if (!string.IsNullOrWhiteSpace(name))
-        {
-            return name;
-        }
-
-        return level.Fallback is null ? null : NameFor(project, level.Fallback, facts);
     }
 
     private static string? Segment(string relativePath, int index)
