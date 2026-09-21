@@ -116,6 +116,12 @@ Rules of the format:
   Policy rules may match on it.
 - **`violates` carries the rule's id**, not a boolean. A red arrow that
   cannot say which rule it broke is not actionable.
+- **The same crossing may be recorded more than once.** An adapter reaching
+  into another module appears as an edge between the projects and again as an
+  edge between the two types that make the reference. Both are true; they are
+  one boundary broken. Counts shown to the reader are crossings — a pair of
+  containers and the rule between them — while the panel lists every reference
+  that realises it, because that is what gets fixed.
 - **`line` is optional.** Without PDBs there is no jump to source; everything
   else still works.
 - **An edge names any container, not only a childless one.** An edge between
@@ -200,6 +206,17 @@ edges at all: it names them inside a method. So a rule of the form "nothing
 but the composition root may reference the implementations" cannot be checked
 by this model, and a repository whose wiring lives in `AddScoped` calls will
 look less connected than it is.
+
+**The newest copy of an assembly is read, and older ones are counted aloud.**
+A repository holds the same assembly once per configuration and again in every
+project that references it. Which copy a directory walk meets first is an
+accident, and reading a week-old build in silence is how a map comes to
+describe code that no longer exists.
+
+**Source is not shown for a file edited since the build.** Line numbers come
+from the PDB of a build; the text comes from disk now. Where they disagree,
+the panel would put a stale declaration next to a current body. No text is
+better than contradictory text, and the run says how many types are affected.
 
 **Only portable PDBs are read.** A repository built on .NET Framework writes
 Windows PDBs, and no source appears at all — the graph, the types and their

@@ -62,11 +62,16 @@ public static class Program
         File.WriteAllText(modelPath, json);
         File.WriteAllText(outPath, Page(json));
 
-        Report(model, projects.Count, facts.Known.Count, outPath);
+        Report(model, projects.Count, facts.Known.Count, outPath, facts);
         return 0;
     }
 
-    private static void Report(Model model, int projects, int assemblies, string outPath)
+    private static void Report(
+        Model model,
+        int projects,
+        int assemblies,
+        string outPath,
+        AssemblyFacts facts)
     {
         var violations = model.Edges.Count(e => e.Violates is not null);
         var types = Count(model.Nodes);
@@ -77,11 +82,38 @@ public static class Program
         Console.WriteLine($"edges      {model.Edges.Count}, {violations} violating");
         Console.WriteLine($"written    {outPath}");
 
+        if (facts.PassedOver > 0)
+        {
+            Console.WriteLine(
+                $"           {facts.PassedOver} older copies passed over; the newest of each was read");
+        }
+
+        var stale = Stale(model.Nodes, facts.Built);
+
+        if (stale > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine(
+                $"{stale} types have no source shown: their files changed after the build was made.");
+            Console.WriteLine("Rebuild the repository so metadata and text describe the same code.");
+        }
+
         if (assemblies == 0)
         {
             Console.WriteLine();
             Console.WriteLine("No assemblies found: build the repository to get types and source lines.");
         }
+    }
+
+    private static int Stale(IReadOnlyList<Node> nodes, DateTime built)
+    {
+        if (built == DateTime.MinValue)
+        {
+            return 0;
+        }
+
+        return nodes.Sum(n =>
+            n.Types.Count(t => t.File is not null && t.Source is null) + Stale(n.Children, built));
     }
 
     private static int Count(IReadOnlyList<Node> nodes) =>

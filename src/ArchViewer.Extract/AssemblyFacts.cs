@@ -30,15 +30,26 @@ public sealed class AssemblyFacts : IDisposable
     public IReadOnlyCollection<string> Known => _assemblies.Keys;
 
     /// <summary>
+    /// How many older copies of the wanted assemblies were passed over.
+    /// </summary>
+    public int PassedOver { get; init; }
+
+    /// <summary>
+    /// When the oldest assembly actually read was written. Source newer than
+    /// this describes code the metadata has never seen.
+    /// </summary>
+    public DateTime Built { get; init; }
+
+    /// <summary>
     /// Finds built assemblies under the repository and opens them for reading.
     /// </summary>
     public static AssemblyFacts Load(string root, IReadOnlyList<string> wanted)
     {
-        var binaries = FindBinaries(root, wanted, out var everything);
+        var binaries = FindBinaries(root, wanted, out var everything, out var passedOver);
 
         if (binaries.Count == 0)
         {
-            return new AssemblyFacts(root, null);
+            return new AssemblyFacts(root, null) { PassedOver = passedOver };
         }
 
         var runtime = Directory.EnumerateFiles(
@@ -49,7 +60,14 @@ public sealed class AssemblyFacts : IDisposable
         // which is often a package rather than a project of this repository.
         var resolver = new PathAssemblyResolver(everything.Concat(runtime));
         var context = new MetadataLoadContext(resolver);
-        var facts = new AssemblyFacts(root, context);
+        var facts = new AssemblyFacts(root, context)
+        {
+            PassedOver = passedOver,
+            Built = binaries.Values
+                .Select(path => File.GetLastWriteTimeUtc(path))
+                .DefaultIfEmpty(DateTime.MinValue)
+                .Min(),
+        };
 
         foreach (var (name, path) in binaries)
         {
@@ -161,7 +179,7 @@ public sealed class AssemblyFacts : IDisposable
             {
                 var location = source?.Locate(type);
                 var fragment = location is { } at && source is not null
-                    ? source.Fragment(at.File, at.First, at.Last, type.Name)
+                    ? source.Fragment(at.File, at.First, at.Last, type.Name, Built)
                     : null;
 
                 types.Add(new TypeNode
@@ -508,32 +526,62 @@ public sealed class AssemblyFacts : IDisposable
         return tick < 0 ? name : name[..tick];
     }
 
+    /// <summary>
+    /// Assemblies to read, one path per name.
+    /// A repository holds the same assembly many times over — one per
+    /// configuration, plus a copy in every project that references it — and
+    /// which one is walked first is an accident of the file system. The newest
+    /// is taken, and how many were passed over is reported, because silently
+    /// reading a week-old build and saying nothing is how a map comes to
+    /// disagree with the code it claims to describe.
+    /// </summary>
     private static Dictionary<string, string> FindBinaries(
         string root,
         IReadOnlyList<string> wanted,
-        out IReadOnlyList<string> everything)
+        out IReadOnlyList<string> everything,
+        out int copies)
     {
         var want = new HashSet<string>(wanted, StringComparer.Ordinal);
-        var found = new Dictionary<string, string>(StringComparer.Ordinal);
-        var all = new Dictionary<string, string>(StringComparer.Ordinal);
+        var newest = new Dictionary<string, (string Path, DateTime Written)>(StringComparer.Ordinal);
+        var all = new Dictionary<string, (string Path, DateTime Written)>(StringComparer.Ordinal);
+        var seen = 0;
 
         foreach (var dll in Directory.EnumerateFiles(root, "*.dll", SearchOption.AllDirectories))
         {
             var name = Path.GetFileNameWithoutExtension(dll);
 
-            if (!all.ContainsKey(name))
+            DateTime written;
+
+            try
             {
-                all[name] = dll;
+                written = File.GetLastWriteTimeUtc(dll);
+            }
+            catch (IOException)
+            {
+                continue;
             }
 
-            if (want.Contains(name) && !found.ContainsKey(name))
+            if (!all.TryGetValue(name, out var best) || written > best.Written)
             {
-                found[name] = dll;
+                all[name] = (dll, written);
+            }
+
+            if (!want.Contains(name))
+            {
+                continue;
+            }
+
+            seen++;
+
+            if (!newest.TryGetValue(name, out var current) || written > current.Written)
+            {
+                newest[name] = (dll, written);
             }
         }
 
-        everything = all.Values.ToList();
-        return found;
+        copies = seen - newest.Count;
+        everything = all.Values.Select(x => x.Path).ToList();
+        return newest.ToDictionary(pair => pair.Key, pair => pair.Value.Path, StringComparer.Ordinal);
     }
 
     /// <summary>Releases the reading context.</summary>
@@ -639,6 +687,7 @@ internal sealed class SourceIndex : IDisposable
         int first,
         int last,
         string typeName,
+        DateTime built,
         int limit = 400)
     {
         var path = Path.Combine(_root, relativeFile);
@@ -652,6 +701,16 @@ internal sealed class SourceIndex : IDisposable
 
         try
         {
+            // Lines come from the PDB of a build; the text comes from disk
+            // now. A file edited since that build describes something the
+            // metadata has never seen, and showing the two side by side puts
+            // a week-old declaration next to today's body. No text is better
+            // than contradictory text.
+            if (built != DateTime.MinValue && File.GetLastWriteTimeUtc(path) > built)
+            {
+                return null;
+            }
+
             lines = File.ReadAllLines(path);
         }
         catch (IOException)

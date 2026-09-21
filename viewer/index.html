@@ -365,7 +365,10 @@ function renderCrumbs() {
 function renderCounts(nodes, current) {
   const scope = current ? [current] : MODEL.nodes;
   const within = new Set(scope.flatMap(n => idsUnder(n)));
-  const bad = MODEL.edges.filter(e => e.violates && within.has(e.from));
+  // Crossings, not references. One adapter reaching into another module is
+  // recorded twice — once between the projects, once between the types that
+  // make the reference — and it is still one broken boundary.
+  const bad = crossings(MODEL.edges.filter(e => e.violates && within.has(e.from)));
 
   // Leaves are not projects: below the project level they are namespaces, and
   // calling thirty namespaces "projects" is simply wrong.
@@ -377,6 +380,25 @@ function renderCounts(nodes, current) {
     (projects ? `<b>${projects}</b> projects · ` : '') +
     `<b>${types}</b> types · ` +
     (bad.length ? `<span class="bad"><b>${bad.length}</b> violations</span>` : `<span>no violations</span>`);
+}
+
+// A violation is a pair of containers and the rule between them. Several
+// references may realise the same crossing; they are one thing to fix.
+function crossings(edges) {
+  const owner = new Map();
+  const index = node => {
+    for (const t of node.types || []) owner.set(t.id, node.id);
+    for (const c of node.children || []) index(c);
+  };
+  MODEL.nodes.forEach(index);
+
+  const seen = new Set();
+  for (const e of edges) {
+    const a = owner.get(e.from) || e.from;
+    const b = owner.get(e.to) || e.to;
+    seen.add(`${a}\u0000${b}\u0000${e.violates}`);
+  }
+  return [...seen];
 }
 
 function count(nodes, fits) {
@@ -403,8 +425,18 @@ function select(n) {
   if (n.project) html += `<div class="kind">${esc(n.project)}</div>`;
 
   if (bad.length) {
+    const grouped = new Map();
+    for (const e of bad) {
+      const key = `${e.violates}`;
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(e);
+    }
     html += `<h2>Violations</h2>`;
-    for (const e of bad) html += `<div class="viol">${esc(short(e.from))} → ${esc(short(e.to))} · ${esc(e.violates)}</div>`;
+    for (const [rule, list] of grouped) {
+      for (const e of list) {
+        html += `<div class="viol">${esc(short(e.from))} → ${esc(short(e.to))} · ${esc(rule)}</div>`;
+      }
+    }
   }
 
   const into = [...new Map(

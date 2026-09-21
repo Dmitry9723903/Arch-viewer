@@ -122,8 +122,10 @@ dotnet src/ArchViewer.Extract/bin/Debug/net10.0/archview.dll examples/solution -
 ```
 
 Six projects, eight references, one nested namespace in each domain, and
-exactly one red arrow — the adapter that reaches into another module's
-application layer:
+exactly one crossing drawn red — the adapter that reaches into another
+module's application layer. It is recorded twice, once between the projects
+and once between the types, because both are true; it is one boundary
+broken, and counted as one:
 
 ![The violation, drawn red and named](docs/screenshot-violation.png)
 
