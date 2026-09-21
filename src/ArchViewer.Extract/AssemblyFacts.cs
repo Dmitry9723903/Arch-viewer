@@ -55,10 +55,32 @@ public sealed class AssemblyFacts : IDisposable
         var runtime = Directory.EnumerateFiles(
             Path.GetDirectoryName(typeof(object).Assembly.Location)!, "*.dll");
 
+        // The web framework ships beside the base libraries, not among them,
+        // and without it no type that touches a framework type can be read —
+        // not just that member, the whole type's members are lost at once.
+        // The failure is silent by design, which is what made it hard to see.
+        //
         // The resolver gets every assembly found, not just the wanted ones:
         // resolving an attribute's type needs whatever assembly declared it,
         // which is often a package rather than a project of this repository.
-        var resolver = new PathAssemblyResolver(everything.Concat(runtime));
+        //
+        // One path per assembly name, and the repository's own copy wins: the
+        // context refuses a name it has already loaded, and the same assembly
+        // reaches us from the runtime directory and from a shared framework
+        // both.
+        var paths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var path in everything.Concat(SharedFrameworks()).Concat(runtime))
+        {
+            var name = Path.GetFileNameWithoutExtension(path);
+
+            if (!paths.ContainsKey(name))
+            {
+                paths[name] = path;
+            }
+        }
+
+        var resolver = new PathAssemblyResolver(paths.Values);
         var context = new MetadataLoadContext(resolver);
         var facts = new AssemblyFacts(root, context)
         {
@@ -223,49 +245,40 @@ public sealed class AssemblyFacts : IDisposable
         const BindingFlags flags = BindingFlags.Public | BindingFlags.Instance
                                    | BindingFlags.Static | BindingFlags.DeclaredOnly;
 
-        Read(() =>
+        foreach (var property in Listed(() => type.GetProperties(flags)))
         {
-            foreach (var property in type.GetProperties(flags))
+            Read(() => members.Add(new MemberNode
             {
-                Read(() => members.Add(new MemberNode
-                {
-                    Text = $"{Pretty(property.PropertyType.Name)} {property.Name}",
-                }));
-            }
-        });
+                Text = $"{Pretty(property.PropertyType.Name)} {property.Name}",
+            }));
+        }
 
-        Read(() =>
+        foreach (var method in Listed(() => type.GetMethods(flags)))
         {
-            foreach (var method in type.GetMethods(flags))
+            if (method.IsSpecialName)
             {
-                if (method.IsSpecialName)
-                {
-                    continue;
-                }
-
-                Read(() =>
-                {
-                    var args = string.Join(", ", method.GetParameters().Select(p => Pretty(p.ParameterType.Name)));
-                    members.Add(new MemberNode { Text = $"{Pretty(method.ReturnType.Name)} {method.Name}({args})" });
-                });
+                continue;
             }
-        });
 
-        Read(() =>
+            Read(() =>
+            {
+                var args = string.Join(", ", method.GetParameters().Select(p => Pretty(p.ParameterType.Name)));
+                members.Add(new MemberNode { Text = $"{Pretty(method.ReturnType.Name)} {method.Name}({args})" });
+            });
+        }
+
+        foreach (var field in Listed(() => type.GetFields(flags)))
         {
-            foreach (var field in type.GetFields(flags))
+            if (!field.IsPublic)
             {
-                if (!field.IsPublic)
-                {
-                    continue;
-                }
-
-                Read(() => members.Add(new MemberNode
-                {
-                    Text = $"{Pretty(field.FieldType.Name)} {field.Name}",
-                }));
+                continue;
             }
-        });
+
+            Read(() => members.Add(new MemberNode
+            {
+                Text = $"{Pretty(field.FieldType.Name)} {field.Name}",
+            }));
+        }
 
         return members;
     }
@@ -368,21 +381,42 @@ public sealed class AssemblyFacts : IDisposable
                                          | BindingFlags.Instance | BindingFlags.Static
                                          | BindingFlags.DeclaredOnly;
 
-            Read(() =>
-            {
-                foreach (var field in type.GetFields(members))
-                {
-                    Held(edges, from, field.FieldType, known);
-                }
-            });
+            // One guard per member, not one around the loop. A single field
+            // whose type cannot be resolved must cost that field, not every
+            // field after it: guarding the whole loop lost sixty-six edges on
+            // one repository, silently, because the first unresolvable member
+            // ended the iteration.
+            FieldInfo[] fields;
 
-            Read(() =>
+            try
             {
-                foreach (var property in type.GetProperties(members))
-                {
-                    Held(edges, from, property.PropertyType, known);
-                }
-            });
+                fields = type.GetFields(members);
+            }
+            catch (Exception e) when (Unresolvable(e))
+            {
+                fields = Array.Empty<FieldInfo>();
+            }
+
+            foreach (var field in fields)
+            {
+                Read(() => Held(edges, from, field.FieldType, known));
+            }
+
+            PropertyInfo[] properties;
+
+            try
+            {
+                properties = type.GetProperties(members);
+            }
+            catch (Exception e) when (Unresolvable(e))
+            {
+                properties = Array.Empty<PropertyInfo>();
+            }
+
+            foreach (var property in properties)
+            {
+                Read(() => Held(edges, from, property.PropertyType, known));
+            }
         }
 
         return edges.ToList();
@@ -483,6 +517,22 @@ public sealed class AssemblyFacts : IDisposable
     /// that declares this is not here". Anything else is a real fault and
     /// propagates.
     /// </summary>
+    /// <summary>
+    /// Lists members, or nothing when the listing itself fails. The guard is
+    /// on obtaining the list; each member is then read under its own.
+    /// </summary>
+    private static T[] Listed<T>(Func<T[]> list)
+    {
+        try
+        {
+            return list();
+        }
+        catch (Exception e) when (Unresolvable(e))
+        {
+            return Array.Empty<T>();
+        }
+    }
+
     private static void Read(Action action)
     {
         try
@@ -491,6 +541,14 @@ public sealed class AssemblyFacts : IDisposable
         }
         catch (Exception e) when (Unresolvable(e))
         {
+            // Swallowed by design: a type whose declaring assembly is not
+            // here cannot be a boundary of this repository. Set ARCHVIEW_LOUD
+            // to see what is being skipped — silence here has hidden a fault
+            // before.
+            if (Environment.GetEnvironmentVariable("ARCHVIEW_LOUD") is not null)
+            {
+                Console.Error.WriteLine($"skipped: {e.GetType().Name}: {e.Message}");
+            }
         }
     }
 
@@ -530,11 +588,56 @@ public sealed class AssemblyFacts : IDisposable
     /// Assemblies to read, one path per name.
     /// A repository holds the same assembly many times over — one per
     /// configuration, plus a copy in every project that references it — and
-    /// which one is walked first is an accident of the file system. The newest
-    /// is taken, and how many were passed over is reported, because silently
-    /// reading a week-old build and saying nothing is how a map comes to
-    /// disagree with the code it claims to describe.
+    /// which one is walked first is an accident of the file system.
+    /// Two things decide, in order.
+    /// A copy in the output of the project that built it wins over a copy the
+    /// build put in some consumer's folder: the timestamp of a copy is when it
+    /// was copied, not when it was compiled, so "newest file" can name an
+    /// older build. Among equals, the newest wins — that is what tells this
+    /// week's Debug from last week's Release.
+    /// How many copies were passed over is reported, because reading a
+    /// week-old build in silence is how a map comes to describe code that no
+    /// longer exists.
     /// </summary>
+    /// <summary>
+    /// Assemblies of the shared frameworks installed beside the runtime —
+    /// ASP.NET Core and the like. Newest version of each framework.
+    /// </summary>
+    private static IEnumerable<string> SharedFrameworks()
+    {
+        var runtimeDirectory = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
+        var shared = Path.GetDirectoryName(Path.GetDirectoryName(runtimeDirectory));
+
+        if (shared is null || !Directory.Exists(shared))
+        {
+            return Array.Empty<string>();
+        }
+
+        var files = new List<string>();
+
+        foreach (var framework in Directory.EnumerateDirectories(shared))
+        {
+            if (string.Equals(
+                    Path.GetFileName(framework),
+                    Path.GetFileName(Path.GetDirectoryName(runtimeDirectory)),
+                    StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var newest = Directory.EnumerateDirectories(framework)
+                .OrderBy(version => version, StringComparer.Ordinal)
+                .LastOrDefault();
+
+            if (newest is not null)
+            {
+                files.AddRange(Directory.EnumerateFiles(newest, "*.dll"));
+            }
+        }
+
+        return files;
+    }
+
     private static Dictionary<string, string> FindBinaries(
         string root,
         IReadOnlyList<string> wanted,
@@ -542,8 +645,8 @@ public sealed class AssemblyFacts : IDisposable
         out int copies)
     {
         var want = new HashSet<string>(wanted, StringComparer.Ordinal);
-        var newest = new Dictionary<string, (string Path, DateTime Written)>(StringComparer.Ordinal);
-        var all = new Dictionary<string, (string Path, DateTime Written)>(StringComparer.Ordinal);
+        var newest = new Dictionary<string, Candidate>(StringComparer.Ordinal);
+        var all = new Dictionary<string, Candidate>(StringComparer.Ordinal);
         var seen = 0;
 
         foreach (var dll in Directory.EnumerateFiles(root, "*.dll", SearchOption.AllDirectories))
@@ -561,9 +664,11 @@ public sealed class AssemblyFacts : IDisposable
                 continue;
             }
 
-            if (!all.TryGetValue(name, out var best) || written > best.Written)
+            var own = IsOwnOutput(dll, name);
+
+            if (!all.TryGetValue(name, out var best) || Better(own, written, best))
             {
-                all[name] = (dll, written);
+                all[name] = new Candidate(dll, written, own);
             }
 
             if (!want.Contains(name))
@@ -573,9 +678,9 @@ public sealed class AssemblyFacts : IDisposable
 
             seen++;
 
-            if (!newest.TryGetValue(name, out var current) || written > current.Written)
+            if (!newest.TryGetValue(name, out var current) || Better(own, written, current))
             {
-                newest[name] = (dll, written);
+                newest[name] = new Candidate(dll, written, own);
             }
         }
 
@@ -583,6 +688,54 @@ public sealed class AssemblyFacts : IDisposable
         everything = all.Values.Select(x => x.Path).ToList();
         return newest.ToDictionary(pair => pair.Key, pair => pair.Value.Path, StringComparer.Ordinal);
     }
+
+    /// <summary>One copy of an assembly, and what is known about it.</summary>
+    private readonly record struct Candidate(string Path, DateTime Written, bool Own);
+
+    /// <summary>
+    /// Whether a candidate beats the one already held: its own output first,
+    /// then the newer file.
+    /// </summary>
+    private static bool Better(bool own, DateTime written, Candidate held) =>
+        own != held.Own ? own : written > held.Written;
+
+    /// <summary>
+    /// Whether this path is the output of the project that builds the
+    /// assembly, rather than a copy placed beside a consumer. The project's
+    /// own folder carries its name.
+    /// </summary>
+    private static bool IsOwnOutput(string path, string assemblyName)
+    {
+        var directory = Path.GetDirectoryName(path);
+
+        while (directory is not null)
+        {
+            var folder = Path.GetFileName(directory);
+
+            if (string.Equals(folder, assemblyName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            // Walk up only through the build's own layers; anything else means
+            // this is a copy sitting in some other project's output.
+            if (!IsBuildFolder(folder))
+            {
+                return false;
+            }
+
+            directory = Path.GetDirectoryName(directory);
+        }
+
+        return false;
+    }
+
+    private static bool IsBuildFolder(string folder) =>
+        folder.StartsWith("net", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(folder, "bin", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(folder, "Debug", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(folder, "Release", StringComparison.OrdinalIgnoreCase)
+        || folder.Contains('-', StringComparison.Ordinal);
 
     /// <summary>Releases the reading context.</summary>
     public void Dispose()
