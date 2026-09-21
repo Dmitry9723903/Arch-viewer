@@ -43,7 +43,11 @@
   .grip:hover { background: var(--accent); }
   @media (max-width: 860px) { aside { border-left: none; border-top: 1px solid var(--line); } }
   aside h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
-             color: var(--dim); margin: 0 0 8px; font-weight: 600; }
+             color: var(--dim); margin: 14px 0 8px; font-weight: 600; }
+  .out-dot, .into-dot { display: inline-block; width: 8px; height: 8px;
+                        border-radius: 2px; margin-right: 6px; }
+  .out-dot { background: var(--accent); }
+  .into-dot { background: var(--ok); }
   aside h3 { font-size: 15px; margin: 0 0 4px; }
   .kind { color: var(--dim); font-size: 12px; margin-bottom: 12px; }
   .type { padding: 6px 0; border-top: 1px solid var(--line); }
@@ -78,9 +82,13 @@
   g.node.sel rect { stroke: var(--accent); stroke-width: 2; }
   g.node text { fill: var(--ink); font-size: 13px; font-weight: 600; pointer-events: none; }
   g.node text.sub { fill: var(--dim); font-size: 11px; font-weight: 400; }
+  g.type-node rect { stroke-dasharray: 3 2; }
+  g.type-node.sel rect { stroke-dasharray: none; }
   path.edge { fill: none; stroke: var(--line); stroke-width: 1.5; marker-end: url(#a); }
   path.edge.bad { stroke: var(--bad); stroke-width: 2; marker-end: url(#ab); }
-  path.edge.hot { stroke: var(--accent); marker-end: url(#ah); }
+  path.edge.out { stroke: var(--accent); stroke-width: 2; marker-end: url(#ah); }
+  path.edge.into { stroke: var(--ok); stroke-width: 2; marker-end: url(#ai); }
+  path.edge.faint { opacity: .18; }
   text.rule { fill: var(--bad); font-size: 10px;
               font-family: ui-monospace, Menlo, Consolas, monospace; }
 </style>
@@ -161,8 +169,17 @@ function render() {
   const canvas = document.getElementById('canvas');
   canvas.innerHTML = '';
 
+  // A container with no children but plenty of types used to show an empty
+  // canvas while the types sat in a list on the side. The types are what it
+  // holds, so they are what it draws.
   if (nodes.length === 0) {
-    canvas.innerHTML = '<p class="empty">Nothing nested here. Pick a box to inspect it.</p>';
+    const types = (current && current.types) || [];
+    if (types.length) {
+      drawTypes(canvas, current, types);
+      if (!state.selected) select(current);
+      return;
+    }
+    canvas.innerHTML = '<p class="empty">Nothing here.</p>';
     if (current) select(current);
     return;
   }
@@ -190,11 +207,59 @@ function render() {
   canvas.appendChild(svg);
 }
 
+// Types drawn as boxes. No edges between them: the model carries references
+// between containers, not between types, and drawing lines that stand for
+// nothing measured would be decoration.
+function drawTypes(canvas, owner, types) {
+  const W = 190, H = 52, GX = 22, GY = 20;
+  const cols = Math.max(1, Math.min(6, Math.floor((canvas.clientWidth - 40) / (W + GX)) || 4));
+  const rows = Math.ceil(types.length / cols);
+  const width = cols * (W + GX) + 40, height = rows * (H + GY) + 40;
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('width', width);
+  svg.setAttribute('height', height);
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+
+  types.forEach((t, i) => {
+    const x = (i % cols) * (W + GX) + 20;
+    const y = Math.floor(i / cols) * (H + GY) + 20;
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('class', 'node type-node' + (state.openType === t.id ? ' sel' : ''));
+
+    const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    r.setAttribute('x', x); r.setAttribute('y', y);
+    r.setAttribute('width', W); r.setAttribute('height', H);
+
+    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    label.setAttribute('x', x + 12); label.setAttribute('y', y + 22);
+    label.textContent = trim(t.name, 22);
+
+    const sub = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    sub.setAttribute('class', 'sub');
+    sub.setAttribute('x', x + 12); sub.setAttribute('y', y + 40);
+    sub.textContent = [t.stereotype, (t.members || []).length ? (t.members.length + ' members') : null]
+      .filter(Boolean).join(' · ');
+
+    g.append(r, label, sub);
+    g.addEventListener('click', ev => {
+      ev.stopPropagation();
+      state.openType = state.openType === t.id ? null : t.id;
+      render();
+      select(owner);
+    });
+    svg.appendChild(g);
+  });
+
+  canvas.appendChild(svg);
+}
+
 function markers() {
   const one = (id, colour) =>
     `<marker id="${id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6"
       orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${colour}"/></marker>`;
-  return `<defs>${one('a', 'var(--line)')}${one('ab', 'var(--bad)')}${one('ah', 'var(--accent)')}</defs>`;
+  return `<defs>${one('a', 'var(--line)')}${one('ab', 'var(--bad)')}` +
+         `${one('ah', 'var(--accent)')}${one('ai', 'var(--ok)')}</defs>`;
 }
 
 function edgePath(pos, e, W, H) {
@@ -203,12 +268,24 @@ function edgePath(pos, e, W, H) {
   const x1 = a.x + W / 2, y1 = a.y + H / 2, x2 = b.x + W / 2, y2 = b.y + H / 2;
   const mx = (x1 + x2) / 2, my = (y1 + y2) / 2 - Math.abs(x2 - x1) * 0.12 - 18;
   p.setAttribute('d', `M${x1},${y1} Q${mx},${my} ${x2},${y2}`);
-  p.setAttribute('class', 'edge' + (e.violates ? ' bad' : ''));
-  if (e.violates) {
-    const t = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-    t.textContent = `${e.from} → ${e.to} breaks ${e.violates}`;
-    p.appendChild(t);
-  }
+
+  // With a box selected the rest of the mesh is noise: what it reaches and
+  // what reaches it are the two questions a dependency graph is asked.
+  const out = state.selected === e.from;
+  const into = state.selected === e.to;
+  const dim = state.selected && !out && !into;
+
+  p.setAttribute('class', 'edge'
+    + (e.violates ? ' bad' : '')
+    + (out ? ' out' : '')
+    + (into ? ' into' : '')
+    + (dim ? ' faint' : ''));
+
+  const t = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+  t.textContent = e.violates
+    ? `${short(e.from)} → ${short(e.to)} breaks ${e.violates}`
+    : `${short(e.from)} → ${short(e.to)}`;
+  p.appendChild(t);
   return p;
 }
 
@@ -297,7 +374,7 @@ function select(n) {
   // thing, and listing it twice says nothing the first line did not.
   const inside = leavesOf(n);
   const out = [...new Map(
-    MODEL.edges.filter(e => inside.includes(e.from)).map(e => [e.to, e])
+    MODEL.edges.filter(e => inside.includes(e.from) && !inside.includes(e.to)).map(e => [e.to, e])
   ).values()];
 
   let html = `<h3>${esc(n.label)}</h3><div class="kind">${esc(n.kind)}${n.role ? ' · ' + esc(n.role) : ''}</div>`;
@@ -308,9 +385,18 @@ function select(n) {
     for (const e of bad) html += `<div class="viol">${esc(short(e.from))} → ${esc(short(e.to))} · ${esc(e.violates)}</div>`;
   }
 
-  html += `<h2>Depends on (${out.length})</h2>`;
+  const into = [...new Map(
+    MODEL.edges.filter(e => inside.includes(e.to) && !inside.includes(e.from)).map(e => [e.from, e])
+  ).values()];
+
+  html += `<h2><span class="out-dot"></span>Depends on (${out.length})</h2>`;
   html += out.length
     ? out.map(e => `<div class="member">${esc(short(e.to))}</div>`).join('')
+    : '<p class="empty">Nothing.</p>';
+
+  html += `<h2><span class="into-dot"></span>Depended on by (${into.length})</h2>`;
+  html += into.length
+    ? into.map(e => `<div class="member">${esc(short(e.from))}</div>`).join('')
     : '<p class="empty">Nothing.</p>';
 
   if (types.length) {
