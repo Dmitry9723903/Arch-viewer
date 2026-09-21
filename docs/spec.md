@@ -156,6 +156,29 @@ itself.
 Left out, types stay flat — which is right for a repository whose projects are
 already the modules.
 
+### References between types
+
+`"edges": true` inside `types` records what each type inherits, implements and
+holds in its fields and properties. Without them the only edges are between
+projects, and a repository of five projects has seven arrows — a sentence
+anyone can recite, and nothing a rule can usefully constrain.
+
+**Method parameters and return types are left out on purpose.** They would
+multiply the edges several times over while adding the least: a type that
+merely passes another one through is coupled to it far more loosely than one
+that stores it. Generic arguments and array elements *are* followed, because
+holding a `List<Invoice>` is holding an `Invoice`.
+
+Only references between types the model already knows are recorded. A type
+from a framework or a package is not a boundary of this repository and does
+not become a node.
+
+**Rules are applied to the containers, not the types.** A rule speaks about
+boundaries, and a type's boundary is the container it sits in — so
+`"subject": { "name": "Controllers" }` constrains every type in that
+namespace, and the violating edge is reported between the two types that
+actually make the reference.
+
 ```json
 {
   "title": "Example",

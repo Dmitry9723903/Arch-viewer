@@ -282,6 +282,185 @@ public sealed class AssemblyFacts : IDisposable
     }
 
     /// <summary>
+    /// References this assembly's types make to other types: what they
+    /// inherit, what they implement, and what they hold in fields and
+    /// properties.
+    /// Method parameters and return types are left out on purpose. They would
+    /// multiply the edges several times over while adding the least: a type
+    /// that merely passes another one through is coupled to it far more
+    /// loosely than one that stores it.
+    /// </summary>
+    /// <param name="assemblyName">Assembly whose types to read.</param>
+    /// <param name="known">Full names of the types worth pointing at.</param>
+    /// <returns>Edges between type identities.</returns>
+    public IReadOnlyList<(string From, string To, string Kind)> TypeEdges(
+        string assemblyName,
+        ISet<string> known)
+    {
+        if (!_assemblies.TryGetValue(assemblyName, out var assembly))
+        {
+            return Array.Empty<(string, string, string)>();
+        }
+
+        var edges = new HashSet<(string From, string To, string Kind)>();
+
+        Type[] found;
+        try
+        {
+            found = assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException e)
+        {
+            found = e.Types.Where(t => t is not null).Select(t => t!).ToArray();
+        }
+
+        foreach (var type in found)
+        {
+            var from = type.FullName;
+
+            if (from is null || !known.Contains(from))
+            {
+                continue;
+            }
+
+            Read(() =>
+            {
+                var baseType = Name(type.BaseType);
+
+                if (baseType is not null && known.Contains(baseType) && baseType != from)
+                {
+                    edges.Add((from, baseType, "inheritance"));
+                }
+            });
+
+            Read(() =>
+            {
+                foreach (var contract in type.GetInterfaces())
+                {
+                    var name = Name(contract);
+
+                    if (name is not null && known.Contains(name) && name != from)
+                    {
+                        edges.Add((from, name, "implements"));
+                    }
+                }
+            });
+
+            const BindingFlags members = BindingFlags.Public | BindingFlags.NonPublic
+                                         | BindingFlags.Instance | BindingFlags.Static
+                                         | BindingFlags.DeclaredOnly;
+
+            Read(() =>
+            {
+                foreach (var field in type.GetFields(members))
+                {
+                    Held(edges, from, field.FieldType, known);
+                }
+            });
+
+            Read(() =>
+            {
+                foreach (var property in type.GetProperties(members))
+                {
+                    Held(edges, from, property.PropertyType, known);
+                }
+            });
+        }
+
+        return edges.ToList();
+    }
+
+    private static void Held(
+        HashSet<(string, string, string)> edges,
+        string from,
+        Type? held,
+        ISet<string> known)
+    {
+        foreach (var name in Unwrap(held))
+        {
+            if (known.Contains(name) && name != from)
+            {
+                edges.Add((from, name, "association"));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Names a type points at: itself, or — for an array or a generic such as
+    /// a collection — the types inside it, which is what the holder is really
+    /// coupled to.
+    /// </summary>
+    private static IEnumerable<string> Unwrap(Type? type)
+    {
+        if (type is null)
+        {
+            yield break;
+        }
+
+        if (type.IsArray)
+        {
+            foreach (var inner in Unwrap(type.GetElementType()))
+            {
+                yield return inner;
+            }
+
+            yield break;
+        }
+
+        var name = Name(type);
+
+        if (name is not null)
+        {
+            yield return name;
+        }
+
+        if (!type.IsGenericType)
+        {
+            yield break;
+        }
+
+        Type[] arguments;
+
+        try
+        {
+            arguments = type.GetGenericArguments();
+        }
+        catch (Exception e) when (Unresolvable(e))
+        {
+            yield break;
+        }
+
+        foreach (var argument in arguments)
+        {
+            foreach (var inner in Unwrap(argument))
+            {
+                yield return inner;
+            }
+        }
+    }
+
+    private static string? Name(Type? type)
+    {
+        if (type is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var full = type.IsGenericType && !type.IsGenericTypeDefinition
+                ? type.GetGenericTypeDefinition().FullName
+                : type.FullName;
+
+            return full is null ? null : full.Split('[')[0];
+        }
+        catch (Exception e) when (Unresolvable(e))
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Runs a metadata read, swallowing the failures that mean "the assembly
     /// that declares this is not here". Anything else is a real fault and
     /// propagates.

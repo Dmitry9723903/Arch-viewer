@@ -63,7 +63,12 @@ public static class Builder
         }
 
         var leaves = byPath.Values.Where(n => n.Project is not null).ToList();
-        var edges = BuildEdges(placements, leaves, policy);
+        var edges = BuildEdges(placements, leaves, policy).ToList();
+
+        if (policy.Types?.Edges == true)
+        {
+            edges.AddRange(TypeEdges(placements, top, facts, policy));
+        }
 
         foreach (var node in top)
         {
@@ -77,6 +82,67 @@ public static class Builder
             Nodes = roots,
             Edges = edges,
         };
+    }
+
+    /// <summary>
+    /// References between types, with the rules applied to the containers that
+    /// hold them: a rule speaks about boundaries, and a type's boundary is the
+    /// container it sits in.
+    /// </summary>
+    private static IEnumerable<Edge> TypeEdges(
+        IReadOnlyList<Placement> placements,
+        IReadOnlyList<MutableNode> roots,
+        AssemblyFacts facts,
+        Policy policy)
+    {
+        // Walked, not taken from the dictionary of groups: namespace
+        // containers are built while placing a project's types and never
+        // enter it.
+        var holder = new Dictionary<string, MutableNode>(StringComparer.Ordinal);
+
+        void Collect(MutableNode node)
+        {
+            foreach (var type in node.Types)
+            {
+                holder[type.Id] = node;
+            }
+
+            foreach (var child in node.Children)
+            {
+                Collect(child);
+            }
+        }
+
+        foreach (var root in roots)
+        {
+            Collect(root);
+        }
+
+        var known = new HashSet<string>(holder.Keys, StringComparer.Ordinal);
+        var edges = new List<Edge>();
+
+        foreach (var placement in placements)
+        {
+            foreach (var (from, to, kind) in facts.TypeEdges(placement.Project.Name, known))
+            {
+                if (!holder.TryGetValue(from, out var source)
+                    || !holder.TryGetValue(to, out var target)
+                    || ReferenceEquals(source, target))
+                {
+                    continue;
+                }
+
+                edges.Add(new Edge
+                {
+                    From = from,
+                    To = to,
+                    Kind = kind,
+                    Violates = Rules.Check(source, target, policy),
+                });
+            }
+        }
+
+        return edges;
     }
 
     private static IReadOnlyList<Edge> BuildEdges(
@@ -170,7 +236,15 @@ internal static class Namespaces
 
             if (!nested.TryGetValue(path, out var node))
             {
-                node = new MutableNode(path, part, kind);
+                node = new MutableNode(path, part, kind)
+                {
+                    // A namespace container inherits the placement of the
+                    // project that declares it: a rule saying "within the same
+                    // module" must hold for it too.
+                    GroupPath = project.GroupPath,
+                    Role = part.ToLowerInvariant(),
+                };
+
                 nested[path] = node;
                 parent.Children.Add(node);
             }
@@ -283,6 +357,23 @@ internal static class Rules
             return false;
         }
 
+        if (selector.Name is not null
+            && !string.Equals(selector.Name, node.Label, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (selector.EndsWith is not null
+            && !node.Id.EndsWith(selector.EndsWith, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (selector.Under is not null && !SitsUnder(node.Id, selector.Under))
+        {
+            return false;
+        }
+
         if (selector.Same is null)
         {
             return true;
@@ -297,6 +388,28 @@ internal static class Rules
         }
 
         return string.Equals(node.GroupPath[level], subject.GroupPath[level], StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Whether an id is the named container or something beneath it.
+    /// Compared by separator, so "Interfaces" does not swallow "InterfacesX".
+    /// </summary>
+    private static bool SitsUnder(string id, string ancestor)
+    {
+        if (id.EndsWith(ancestor, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var index = id.IndexOf(ancestor, StringComparison.OrdinalIgnoreCase);
+
+        if (index < 0)
+        {
+            return false;
+        }
+
+        var after = index + ancestor.Length;
+        return after < id.Length && (id[after] == '.' || id[after] == '/');
     }
 
     private static int IndexOfKind(Policy policy, string kind)

@@ -64,6 +64,12 @@ them; file and line come from portable PDBs. No regular expressions
 pretending to be a parser, so `partial` types, generics, nested types and
 file-scoped namespaces are not guessed at.
 
+**Structure below the project is visible.** Where one project means one
+boundary, the graph of project references is the architecture. Where five
+projects hold four hundred types, it is seven arrows that say nothing, and the
+architecture lives in the namespaces — so types group by namespace, and what
+they inherit, implement and hold becomes edges a rule can constrain.
+
 **Rules are two-dimensional.** A layered model where every component has a
 single rank can express "this layer may not reference that layer". It cannot
 express "an adapter may reference *its own* application layer and no other",

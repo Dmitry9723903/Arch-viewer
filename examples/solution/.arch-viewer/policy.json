@@ -38,6 +38,7 @@
   "types": {
     "by": "namespace",
     "kind": "namespace",
-    "trimAssemblyPrefix": true
+    "trimAssemblyPrefix": true,
+    "edges": true
   }
 }

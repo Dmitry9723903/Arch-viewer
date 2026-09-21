@@ -87,10 +87,13 @@
   g.type-node rect { stroke-dasharray: 3 2; }
   g.type-node.sel rect { stroke-dasharray: none; }
   path.edge { fill: none; stroke: var(--line); stroke-width: 1.5; marker-end: url(#a); }
-  path.edge.bad { stroke: var(--bad); stroke-width: 2; marker-end: url(#ab); }
   path.edge.out { stroke: var(--accent); stroke-width: 2; marker-end: url(#ah); }
   path.edge.into { stroke: var(--ok); stroke-width: 2; marker-end: url(#ai); }
+  /* A violation outranks the highlight: whichever box is selected, a broken
+     rule is the thing to see. */
+  path.edge.bad { stroke: var(--bad); stroke-width: 2.5; marker-end: url(#ab); }
   path.edge.faint { opacity: .18; }
+  path.edge.bad.faint { opacity: .5; }
   text.rule { fill: var(--bad); font-size: 10px;
               font-family: ui-monospace, Menlo, Consolas, monospace; }
 </style>
@@ -139,6 +142,8 @@ function nodeAt(path) {
 function idsUnder(node, acc = []) {
   acc.push(node.id);
   for (const c of node.children || []) idsUnder(c, acc);
+  // Types are edge ends too, once the model carries references between them.
+  for (const t of node.types || []) acc.push(t.id);
   return acc;
 }
 
@@ -408,12 +413,12 @@ function select(n) {
 
   html += `<h2><span class="out-dot"></span>Depends on (${out.length})</h2>`;
   html += out.length
-    ? out.map(e => `<div class="member">${esc(short(e.to))}</div>`).join('')
+    ? list(out.map(e => e.to))
     : '<p class="empty">Nothing.</p>';
 
   html += `<h2><span class="into-dot"></span>Depended on by (${into.length})</h2>`;
   html += into.length
-    ? into.map(e => `<div class="member">${esc(short(e.from))}</div>`).join('')
+    ? list(into.map(e => e.from))
     : '<p class="empty">Nothing.</p>';
 
   if (types.length) {
@@ -489,6 +494,26 @@ function paint(text) {
     .replace(/&quot;[^&]*?&quot;/g, m => '\u0000' + m + '\u0001')
     .replace(KEYWORDS, '<span class="kw">$1</span>')
     .replace(/\u0000(.*?)\u0001/g, '<span class="st">$1</span>');
+}
+
+// Short names collide — two modules may each hold an "Application", and a
+// list of identical words tells the reader nothing. Where they collide, one
+// more segment is shown, which is the least that distinguishes them.
+function list(ids) {
+  const seen = new Map();
+  for (const id of ids) {
+    const name = short(id);
+    seen.set(name, (seen.get(name) || 0) + 1);
+  }
+  return ids
+    .map(id => esc(seen.get(short(id)) > 1 ? tail(id, 2) : short(id)))
+    .map(text => `<div class="member">${text}</div>`)
+    .join('');
+}
+
+function tail(id, count) {
+  const parts = id.split(/[./]/);
+  return parts.slice(Math.max(0, parts.length - count)).join('.');
 }
 
 // Container ids are paths above the project ("Payroll/Example.Payroll.Domain")

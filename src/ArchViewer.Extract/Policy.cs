@@ -77,6 +77,13 @@ public sealed class TypeGrouping
     /// differs helps nobody.
     /// </summary>
     public bool TrimAssemblyPrefix { get; init; } = true;
+
+    /// <summary>
+    /// Whether to record references between types — what a type inherits,
+    /// implements, and holds. Without them the only edges are between
+    /// projects, and a repository of few projects has nothing to constrain.
+    /// </summary>
+    public bool Edges { get; init; }
 }
 
 /// <summary>
@@ -144,6 +151,26 @@ public sealed class Selector
 
     /// <summary>Required id, or null for any.</summary>
     public string? Id { get; init; }
+
+    /// <summary>
+    /// Required label — the container's own name, without the path above it.
+    /// This is how a rule names a namespace: "Controllers", not the whole
+    /// dotted address it happens to sit at.
+    /// </summary>
+    public string? Name { get; init; }
+
+    /// <summary>
+    /// Required ending of the id. Lets a rule name a family of containers,
+    /// such as every namespace called Entities under any project.
+    /// </summary>
+    public string? EndsWith { get; init; }
+
+    /// <summary>
+    /// A container this one must sit at or beneath. Naming a namespace almost
+    /// always means naming what is under it as well: allowing "Interfaces" and
+    /// not "Interfaces.Billing" would be a distinction nobody intends.
+    /// </summary>
+    public string? Under { get; init; }
 
     /// <summary>
     /// Kind of ancestor the target must share with the subject — the second axis.
