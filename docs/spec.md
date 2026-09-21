@@ -118,6 +118,12 @@ Rules of the format:
   cannot say which rule it broke is not actionable.
 - **`line` is optional.** Without PDBs there is no jump to source; everything
   else still works.
+- **An edge names any container, not only a childless one.** An edge between
+  projects stays an edge between projects when those projects grow namespace
+  containers inside them. Rolling edges up to the visible boxes must therefore
+  consider a node and everything under it, not only the leaves — assuming the
+  ends of an edge are leaves is an assumption that stops being true the moment
+  a project holds anything.
 - Containers without a declared group are collected into one explicit
   container rather than dropped or attached to an arbitrary parent.
 

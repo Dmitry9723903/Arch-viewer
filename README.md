@@ -115,8 +115,9 @@ Try it on the bundled example:
 dotnet src/ArchViewer.Extract/bin/Debug/net10.0/archview.dll examples/solution --out example.html
 ```
 
-Six projects, eight references, and exactly one red arrow — the adapter that
-reaches into another module's application layer:
+Six projects, eight references, one nested namespace in each domain, and
+exactly one red arrow — the adapter that reaches into another module's
+application layer:
 
 ![The violation, drawn red and named](docs/screenshot-violation.png)
 

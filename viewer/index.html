@@ -76,6 +76,8 @@
   .code .cm { color: var(--dim); font-style: italic; }
   .code .st { color: var(--ok); }
   .nocode { color: var(--dim); font-size: 12px; padding: 6px 0; }
+  .own-types { color: var(--dim); font-size: 12px; margin: 18px 0 6px 20px;
+               text-transform: uppercase; letter-spacing: .06em; }
   .empty { color: var(--dim); }
   g.node rect { fill: var(--box); stroke: var(--line); stroke-width: 1; rx: 8; cursor: pointer; }
   g.node:hover rect { fill: var(--box-hover); stroke: var(--accent); }
@@ -129,10 +131,14 @@ function nodeAt(path) {
   return node;
 }
 
-// Every leaf id underneath a node — used to roll edges up to visible boxes.
-function leavesOf(node, acc = []) {
-  if (!node.children || node.children.length === 0) { acc.push(node.id); return acc; }
-  for (const c of node.children) leavesOf(c, acc);
+// Every id at or underneath a node, used to roll edges up to visible boxes.
+// The node itself counts: an edge names a project, and a project may now hold
+// namespace containers, which would otherwise make it invisible to its own
+// edges. Collecting only childless nodes was an unwritten assumption that the
+// ends of an edge are always leaves, and it stopped being true.
+function idsUnder(node, acc = []) {
+  acc.push(node.id);
+  for (const c of node.children || []) idsUnder(c, acc);
   return acc;
 }
 
@@ -145,7 +151,7 @@ function countTypes(node) {
 // Edges between the boxes currently on screen, with violations preserved.
 function visibleEdges(nodes) {
   const owner = new Map();
-  nodes.forEach(n => leavesOf(n).forEach(leaf => owner.set(leaf, n.id)));
+  nodes.forEach(n => idsUnder(n).forEach(leaf => owner.set(leaf, n.id)));
   const seen = new Map();
   for (const e of MODEL.edges) {
     const a = owner.get(e.from), b = owner.get(e.to);
@@ -185,6 +191,7 @@ function render() {
   }
 
   const edges = visibleEdges(nodes);
+  const own = (current && current.types) || [];
   const cols = Math.max(1, Math.min(4, Math.ceil(Math.sqrt(nodes.length))));
   const W = 200, H = 64, GX = 90, GY = 60;
   const pos = new Map();
@@ -205,6 +212,16 @@ function render() {
   for (const n of nodes) svg.appendChild(nodeBox(n, pos.get(n.id), W, H));
 
   canvas.appendChild(svg);
+
+  // Types declared here rather than in a nested container are held by this
+  // box too, and were previously visible only in the list at the side.
+  if (own.length) {
+    const heading = document.createElement('p');
+    heading.className = 'own-types';
+    heading.textContent = `${own.length} type${own.length > 1 ? 's' : ''} declared here`;
+    canvas.appendChild(heading);
+    drawTypes(canvas, current, own);
+  }
 }
 
 // Types drawn as boxes. No edges between them: the model carries references
@@ -342,8 +359,8 @@ function renderCrumbs() {
 
 function renderCounts(nodes, current) {
   const scope = current ? [current] : MODEL.nodes;
-  const leaves = new Set(scope.flatMap(n => leavesOf(n)));
-  const bad = MODEL.edges.filter(e => e.violates && leaves.has(e.from));
+  const within = new Set(scope.flatMap(n => idsUnder(n)));
+  const bad = MODEL.edges.filter(e => e.violates && within.has(e.from));
 
   // Leaves are not projects: below the project level they are namespaces, and
   // calling thirty namespaces "projects" is simply wrong.
@@ -369,10 +386,10 @@ function count(nodes, fits) {
 function select(n) {
   const panel = document.getElementById('panel');
   const types = n.types || [];
-  const bad = MODEL.edges.filter(e => e.violates && leavesOf(n).includes(e.from));
+  const bad = MODEL.edges.filter(e => e.violates && idsUnder(n).includes(e.from));
   // Targets, not edges: several projects of a module may reference the same
   // thing, and listing it twice says nothing the first line did not.
-  const inside = leavesOf(n);
+  const inside = idsUnder(n);
   const out = [...new Map(
     MODEL.edges.filter(e => inside.includes(e.from) && !inside.includes(e.to)).map(e => [e.to, e])
   ).values()];
@@ -474,7 +491,13 @@ function paint(text) {
     .replace(/\u0000(.*?)\u0001/g, '<span class="st">$1</span>');
 }
 
-function short(id) { const i = id.lastIndexOf('/'); return i < 0 ? id : id.slice(i + 1); }
+// Container ids are paths above the project ("Payroll/Example.Payroll.Domain")
+// and dotted below it ("…Domain.Rates"). Both need shortening, or the panel
+// prints the whole address.
+function short(id) {
+  const cut = Math.max(id.lastIndexOf('/'), id.lastIndexOf('.'));
+  return cut < 0 ? id : id.slice(cut + 1);
+}
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
 // The view lives in the address, so a particular box — or a particular type
