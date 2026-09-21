@@ -274,7 +274,13 @@ internal static class Namespaces
                     // project that declares it: a rule saying "within the same
                     // module" must hold for it too.
                     GroupPath = project.GroupPath,
-                    Role = part.ToLowerInvariant(),
+
+                    // It does NOT get a role. A namespace is a way of
+                    // arranging a project's types, not a boundary of its own:
+                    // calling the folder "Persistence" does not make it a
+                    // layer. Rules about roles are answered by the nearest
+                    // ancestor that does carry one.
+                    Boundary = project.Boundary ?? project,
                 };
 
                 nested[path] = node;
@@ -322,6 +328,12 @@ internal sealed class MutableNode(string id, string label, string kind)
 
     /// <summary>Role within the parent.</summary>
     public string? Role { get; init; }
+
+    /// <summary>
+    /// The nearest container that carries a role, when this one does not.
+    /// A namespace defers to the project that declares it.
+    /// </summary>
+    public MutableNode? Boundary { get; init; }
 
     /// <summary>Project file, for a leaf.</summary>
     public string? Project { get; init; }
@@ -378,10 +390,16 @@ internal static class Rules
 
     private static bool Matches(Selector selector, MutableNode node, MutableNode subject, Policy policy)
     {
-        if (selector.Role is not null
-            && !string.Equals(selector.Role, node.Role, StringComparison.OrdinalIgnoreCase))
+        if (selector.Role is not null)
         {
-            return false;
+            // Asked about a role, answer for whoever holds one.
+            var bearer = node.Role is not null ? node : node.Boundary;
+
+            if (bearer is null
+                || !string.Equals(selector.Role, bearer.Role, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
         }
 
         // Naming a container means naming what is inside it. Allowing
