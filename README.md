@@ -6,6 +6,8 @@ Look at the structure of a .NET solution instead of reading its code.
 container → nested container → type → member → source. Dependencies that
 break your own rules are drawn in red, labelled with the rule they break.
 
+![A module with a type open, showing its source](docs/screenshot.png)
+
 **Status: early but working.** The extractor and the viewer run. Types,
 members and jump-to-source work when the repository has been built. Not yet
 done: measured metrics, what-if proposals, extractors for other ecosystems.
@@ -114,7 +116,12 @@ dotnet src/ArchViewer.Extract/bin/Debug/net10.0/archview.dll examples/solution -
 ```
 
 Six projects, eight references, and exactly one red arrow — the adapter that
-reaches into another module's application layer.
+reaches into another module's application layer:
+
+![The violation, drawn red and named](docs/screenshot-violation.png)
+
+The panel names the rule that was broken, not merely that something was. A red
+arrow you cannot act on is decoration.
 
 ## Using it with an agent
 

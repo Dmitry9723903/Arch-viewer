@@ -8,5 +8,7 @@ obj/
 .claude/settings.local.json
 .claude/*.local.json
 
-# Generated model files (produced by the extractor, not authored)
+# Generated output (produced by the extractor, not authored)
 *.arch.json
+examples/example.html
+examples/example.json

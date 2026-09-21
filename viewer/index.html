@@ -276,7 +276,12 @@ function select(n) {
   const panel = document.getElementById('panel');
   const types = n.types || [];
   const bad = MODEL.edges.filter(e => e.violates && leavesOf(n).includes(e.from));
-  const out = MODEL.edges.filter(e => leavesOf(n).includes(e.from));
+  // Targets, not edges: several projects of a module may reference the same
+  // thing, and listing it twice says nothing the first line did not.
+  const inside = leavesOf(n);
+  const out = [...new Map(
+    MODEL.edges.filter(e => inside.includes(e.from)).map(e => [e.to, e])
+  ).values()];
 
   let html = `<h3>${esc(n.label)}</h3><div class="kind">${esc(n.kind)}${n.role ? ' · ' + esc(n.role) : ''}</div>`;
   if (n.project) html += `<div class="kind">${esc(n.project)}</div>`;
