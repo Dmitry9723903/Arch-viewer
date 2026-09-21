@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #161922; --line: #2a2f3d; --ink: #e6e9ef;
+    --dim: #8b93a7; --accent: #5b9dff; --bad: #ff5c5c; --ok: #3ddc97;
+    --box: #1d2230; --box-hover: #262d3d;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f6f7f9; --panel: #ffffff; --line: #d9dde5; --ink: #1a1d24;
+      --dim: #5d6474; --accent: #1f6feb; --bad: #d1242f; --ok: #1a7f5a;
+      --box: #ffffff; --box-hover: #eef1f6;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+           padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  nav { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; color: var(--dim); }
+  nav button { background: none; border: none; color: var(--accent); cursor: pointer;
+               font: inherit; padding: 2px 4px; border-radius: 4px; }
+  nav button:hover { background: var(--box-hover); }
+  .counts { margin-left: auto; color: var(--dim); font-size: 12px; }
+  .counts b { color: var(--ink); font-weight: 600; }
+  .counts .bad { color: var(--bad); }
+  main { display: grid; grid-template-columns: 1fr 4px var(--aside, 520px);
+         height: calc(100vh - 49px); }
+  @media (max-width: 860px) {
+    main { grid-template-columns: 1fr; height: auto; }
+    .grip { display: none; }
+  }
+  #canvas { overflow: auto; padding: 16px; }
+  aside { border-left: 1px solid var(--line); background: var(--panel);
+          overflow: auto; padding: 16px; min-width: 300px; }
+  .grip { cursor: col-resize; background: var(--line); width: 3px; }
+  .grip:hover { background: var(--accent); }
+  @media (max-width: 860px) { aside { border-left: none; border-top: 1px solid var(--line); } }
+  aside h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
+             color: var(--dim); margin: 0 0 8px; font-weight: 600; }
+  aside h3 { font-size: 15px; margin: 0 0 4px; }
+  .kind { color: var(--dim); font-size: 12px; margin-bottom: 12px; }
+  .type { padding: 6px 0; border-top: 1px solid var(--line); }
+  .type .name { font-weight: 600; }
+  .type .tri { color: var(--dim); font-size: 10px; width: 10px; }
+  .type .st { color: var(--dim); font-size: 12px; }
+  .member { color: var(--dim); font-size: 12px;
+            font-family: ui-monospace, Menlo, Consolas, monospace; padding-left: 10px; }
+  a.src { color: var(--accent); font-size: 12px; text-decoration: none;
+          display: inline-block; margin: 4px 0; }
+  a.src:hover { text-decoration: underline; }
+  .viol { color: var(--bad); font-size: 12px; padding: 4px 0; border-top: 1px solid var(--line);
+          font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .type.open { background: var(--box-hover); margin: 0 -8px; padding: 6px 8px; border-radius: 6px; }
+  .type .head { cursor: pointer; display: flex; align-items: baseline; gap: 6px; }
+  .type .head:hover .name { color: var(--accent); }
+  .code { margin: 8px 0 4px; border: 1px solid var(--line); border-radius: 6px;
+          background: var(--bg); overflow: auto; max-height: 60vh; }
+  .code table { border-collapse: collapse; font-family: ui-monospace, Menlo, Consolas, monospace;
+                font-size: 12px; line-height: 1.45; width: 100%; }
+  .code td.n { text-align: right; padding: 0 8px 0 10px; color: var(--dim);
+               user-select: none; width: 1%; white-space: nowrap;
+               border-right: 1px solid var(--line); }
+  .code td.l { padding: 0 10px; white-space: pre; color: var(--ink); }
+  .code .kw { color: var(--accent); }
+  .code .cm { color: var(--dim); font-style: italic; }
+  .code .st { color: var(--ok); }
+  .nocode { color: var(--dim); font-size: 12px; padding: 6px 0; }
+  .empty { color: var(--dim); }
+  g.node rect { fill: var(--box); stroke: var(--line); stroke-width: 1; rx: 8; cursor: pointer; }
+  g.node:hover rect { fill: var(--box-hover); stroke: var(--accent); }
+  g.node.sel rect { stroke: var(--accent); stroke-width: 2; }
+  g.node text { fill: var(--ink); font-size: 13px; font-weight: 600; pointer-events: none; }
+  g.node text.sub { fill: var(--dim); font-size: 11px; font-weight: 400; }
+  path.edge { fill: none; stroke: var(--line); stroke-width: 1.5; marker-end: url(#a); }
+  path.edge.bad { stroke: var(--bad); stroke-width: 2; marker-end: url(#ab); }
+  path.edge.hot { stroke: var(--accent); marker-end: url(#ah); }
+  text.rule { fill: var(--bad); font-size: 10px;
+              font-family: ui-monospace, Menlo, Consolas, monospace; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Architecture</h1>
+  <nav id="crumbs"></nav>
+  <div class="counts" id="counts"></div>
+</header>
+<main id="main">
+  <div id="canvas"></div>
+  <div class="grip" id="grip"></div>
+  <aside id="panel"></aside>
+</main>
+<script>
+const MODEL = /*MODEL*/null;
+
+const state = { path: [], selected: null, openType: null };
+
+function childrenAt(path) {
+  let list = MODEL.nodes;
+  for (const id of path) {
+    const node = list.find(n => n.id === id);
+    if (!node) return [];
+    list = node.children || [];
+  }
+  return list;
+}
+
+function nodeAt(path) {
+  let list = MODEL.nodes, node = null;
+  for (const id of path) {
+    node = list.find(n => n.id === id);
+    if (!node) return null;
+    list = node.children || [];
+  }
+  return node;
+}
+
+// Every leaf id underneath a node — used to roll edges up to visible boxes.
+function leavesOf(node, acc = []) {
+  if (!node.children || node.children.length === 0) { acc.push(node.id); return acc; }
+  for (const c of node.children) leavesOf(c, acc);
+  return acc;
+}
+
+function countTypes(node) {
+  let n = (node.types || []).length;
+  for (const c of node.children || []) n += countTypes(c);
+  return n;
+}
+
+// Edges between the boxes currently on screen, with violations preserved.
+function visibleEdges(nodes) {
+  const owner = new Map();
+  nodes.forEach(n => leavesOf(n).forEach(leaf => owner.set(leaf, n.id)));
+  const seen = new Map();
+  for (const e of MODEL.edges) {
+    const a = owner.get(e.from), b = owner.get(e.to);
+    if (!a || !b || a === b) continue;
+    const key = a + '\u0000' + b;
+    const prev = seen.get(key);
+    if (prev && !prev.violates) { if (e.violates) prev.violates = e.violates; continue; }
+    if (!prev) seen.set(key, { from: a, to: b, violates: e.violates || null });
+  }
+  return [...seen.values()];
+}
+
+function render() {
+  writeAddress();
+  const nodes = childrenAt(state.path);
+  const current = nodeAt(state.path);
+  document.getElementById('title').textContent = MODEL.title;
+  renderCrumbs();
+  renderCounts(nodes, current);
+
+  const canvas = document.getElementById('canvas');
+  canvas.innerHTML = '';
+
+  if (nodes.length === 0) {
+    canvas.innerHTML = '<p class="empty">Nothing nested here. Pick a box to inspect it.</p>';
+    if (current) select(current);
+    return;
+  }
+
+  const edges = visibleEdges(nodes);
+  const cols = Math.max(1, Math.min(4, Math.ceil(Math.sqrt(nodes.length))));
+  const W = 200, H = 64, GX = 90, GY = 60;
+  const pos = new Map();
+  nodes.forEach((n, i) => {
+    const row = Math.floor(i / cols), col = i % cols;
+    pos.set(n.id, { x: col * (W + GX) + 20, y: row * (H + GY) + 20 });
+  });
+  const rows = Math.ceil(nodes.length / cols);
+  const width = cols * (W + GX) + 40, height = rows * (H + GY) + 40;
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('width', width);
+  svg.setAttribute('height', height);
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.innerHTML = markers();
+
+  for (const e of edges) svg.appendChild(edgePath(pos, e, W, H));
+  for (const n of nodes) svg.appendChild(nodeBox(n, pos.get(n.id), W, H));
+
+  canvas.appendChild(svg);
+}
+
+function markers() {
+  const one = (id, colour) =>
+    `<marker id="${id}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6"
+      orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${colour}"/></marker>`;
+  return `<defs>${one('a', 'var(--line)')}${one('ab', 'var(--bad)')}${one('ah', 'var(--accent)')}</defs>`;
+}
+
+function edgePath(pos, e, W, H) {
+  const a = pos.get(e.from), b = pos.get(e.to);
+  const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  const x1 = a.x + W / 2, y1 = a.y + H / 2, x2 = b.x + W / 2, y2 = b.y + H / 2;
+  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2 - Math.abs(x2 - x1) * 0.12 - 18;
+  p.setAttribute('d', `M${x1},${y1} Q${mx},${my} ${x2},${y2}`);
+  p.setAttribute('class', 'edge' + (e.violates ? ' bad' : ''));
+  if (e.violates) {
+    const t = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+    t.textContent = `${e.from} → ${e.to} breaks ${e.violates}`;
+    p.appendChild(t);
+  }
+  return p;
+}
+
+function nodeBox(n, at, W, H) {
+  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  g.setAttribute('class', 'node' + (state.selected === n.id ? ' sel' : ''));
+  const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  r.setAttribute('x', at.x); r.setAttribute('y', at.y);
+  r.setAttribute('width', W); r.setAttribute('height', H);
+  const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  label.setAttribute('x', at.x + 14); label.setAttribute('y', at.y + 26);
+  label.textContent = trim(n.label, 24);
+  const kids = (n.children || []).length, types = countTypes(n);
+  const sub = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  sub.setAttribute('class', 'sub');
+  sub.setAttribute('x', at.x + 14); sub.setAttribute('y', at.y + 46);
+  sub.textContent = [n.role, kids ? kids + ' inside' : null, types ? types + ' types' : null]
+    .filter(Boolean).join(' · ') || n.kind;
+  g.append(r, label, sub);
+  g.addEventListener('click', ev => {
+    ev.stopPropagation();
+    if (state.selected === n.id && kids) { state.path = [...state.path, n.id]; state.selected = null; state.openType = null; }
+    else { state.selected = n.id; state.openType = null; select(n); }
+    render();
+  });
+  g.addEventListener('dblclick', ev => {
+    ev.stopPropagation();
+    if (kids) { state.path = [...state.path, n.id]; state.selected = null; render(); }
+  });
+  const tip = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+  tip.textContent = kids ? 'Click to select, again to open' : 'Click to inspect';
+  g.appendChild(tip);
+  return g;
+}
+
+function trim(s, n) { return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+
+function renderCrumbs() {
+  const nav = document.getElementById('crumbs');
+  nav.innerHTML = '';
+  const add = (label, path) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.onclick = () => { state.path = path; state.selected = null; render(); };
+    nav.appendChild(b);
+  };
+  add('top', []);
+  state.path.forEach((id, i) => {
+    nav.appendChild(document.createTextNode('/'));
+    const node = nodeAt(state.path.slice(0, i + 1));
+    add(node ? node.label : id, state.path.slice(0, i + 1));
+  });
+}
+
+function renderCounts(nodes, current) {
+  const scope = current ? [current] : MODEL.nodes;
+  const leaves = new Set(scope.flatMap(n => leavesOf(n)));
+  const bad = MODEL.edges.filter(e => e.violates && leaves.has(e.from));
+  document.getElementById('counts').innerHTML =
+    `<b>${nodes.length}</b> here · <b>${leaves.size}</b> projects · ` +
+    (bad.length ? `<span class="bad"><b>${bad.length}</b> violations</span>` : `<span>no violations</span>`);
+}
+
+function select(n) {
+  const panel = document.getElementById('panel');
+  const types = n.types || [];
+  const bad = MODEL.edges.filter(e => e.violates && leavesOf(n).includes(e.from));
+  const out = MODEL.edges.filter(e => leavesOf(n).includes(e.from));
+
+  let html = `<h3>${esc(n.label)}</h3><div class="kind">${esc(n.kind)}${n.role ? ' · ' + esc(n.role) : ''}</div>`;
+  if (n.project) html += `<div class="kind">${esc(n.project)}</div>`;
+
+  if (bad.length) {
+    html += `<h2>Violations</h2>`;
+    for (const e of bad) html += `<div class="viol">${esc(short(e.from))} → ${esc(short(e.to))} · ${esc(e.violates)}</div>`;
+  }
+
+  html += `<h2>Depends on (${out.length})</h2>`;
+  html += out.length
+    ? out.map(e => `<div class="member">${esc(short(e.to))}</div>`).join('')
+    : '<p class="empty">Nothing.</p>';
+
+  if (types.length) {
+    html += `<h2>Types (${types.length})</h2>`;
+    types.forEach((t, i) => {
+      const open = state.openType === t.id;
+      html += `<div class="type${open ? ' open' : ''}">`;
+      html += `<div class="head" data-type="${i}">`;
+      html += `<span class="tri">${open ? '▾' : '▸'}</span>`;
+      html += `<span class="name">${esc(t.name)}</span> <span class="st">${esc(t.stereotype)}</span></div>`;
+      if (open) {
+        if (t.file) {
+          const abs = MODEL.root + '/' + t.file;
+          html += `<a class="src" href="vscode://file/${encodeURI(abs)}:${t.line || 1}">${esc(t.file)}:${t.line || 1} — open in editor</a>`;
+        }
+        html += t.source
+          ? renderCode(t.source, t.line || 1)
+          : `<p class="nocode">No source. The repository was built without PDBs, or this type is compiler-generated.</p>`;
+        for (const m of (t.members || [])) html += `<div class="member">${esc(m.text)}</div>`;
+      }
+      html += `</div>`;
+    });
+  } else if (!n.children || n.children.length === 0) {
+    html += `<h2>Types</h2><p class="empty">None read. Build the repository so assemblies exist.</p>`;
+  }
+
+  panel.innerHTML = html;
+
+  const opened = panel.querySelector('.type.open');
+  if (opened) opened.scrollIntoView({ block: 'nearest' });
+
+  panel.querySelectorAll('.head').forEach(el => {
+    el.addEventListener('click', () => {
+      const t = types[Number(el.dataset.type)];
+      state.openType = state.openType === t.id ? null : t.id;
+      writeAddress();
+      select(n);
+    });
+  });
+}
+
+// Source lines with numbers. Highlighting stays deliberately crude: keywords,
+// comments and strings. A real tokeniser would be a dependency, and this is a
+// map of the code, not an editor.
+function renderCode(source, firstLine) {
+  const lines = source.split('\n');
+  let html = '<div class="code"><table>';
+  lines.forEach((line, i) => {
+    html += `<tr><td class="n">${firstLine + i}</td><td class="l">${colour(line)}</td></tr>`;
+  });
+  return html + '</table></div>';
+}
+
+const KEYWORDS = new RegExp('\\b(' + [
+  'public','private','protected','internal','static','readonly','const','sealed','abstract',
+  'virtual','override','partial','class','record','struct','interface','enum','namespace',
+  'using','return','if','else','for','foreach','while','switch','case','break','continue',
+  'new','this','base','null','true','false','var','void','async','await','try','catch',
+  'finally','throw','get','set','init','required','in','out','ref','is','as','typeof','where'
+].join('|') + ')\\b', 'g');
+
+function colour(line) {
+  const escaped = esc(line);
+  const comment = escaped.indexOf('//');
+  if (comment >= 0) {
+    return paint(escaped.slice(0, comment)) + '<span class="cm">' + escaped.slice(comment) + '</span>';
+  }
+  return paint(escaped);
+}
+
+function paint(text) {
+  return text
+    .replace(/&quot;[^&]*?&quot;/g, m => '\u0000' + m + '\u0001')
+    .replace(KEYWORDS, '<span class="kw">$1</span>')
+    .replace(/\u0000(.*?)\u0001/g, '<span class="st">$1</span>');
+}
+
+function short(id) { const i = id.lastIndexOf('/'); return i < 0 ? id : id.slice(i + 1); }
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+// The view lives in the address, so a particular box — or a particular type
+// with its source open — can be linked to and reopened.
+function readAddress() {
+  const raw = decodeURIComponent(location.hash.replace(/^#/, ''));
+  if (!raw) return;
+  const parts = new URLSearchParams(raw);
+  const at = parts.get('at');
+  state.path = at ? at.split('\u007c').filter(Boolean) : [];
+  state.selected = parts.get('box');
+  state.openType = parts.get('type');
+}
+
+function writeAddress() {
+  const parts = new URLSearchParams();
+  if (state.path.length) parts.set('at', state.path.join('\u007c'));
+  if (state.selected) parts.set('box', state.selected);
+  if (state.openType) parts.set('type', state.openType);
+  const next = '#' + parts.toString();
+  if (next !== location.hash) history.replaceState(null, '', next);
+}
+
+window.addEventListener('hashchange', () => { readAddress(); render(); restore(); });
+
+// The panel holds source, so its width is the reader's business, not ours.
+(function draggable() {
+  const grip = document.getElementById('grip');
+  const main = document.getElementById('main');
+  if (!grip || !main) return;
+  let dragging = false;
+  grip.addEventListener('mousedown', e => { dragging = true; e.preventDefault(); });
+  window.addEventListener('mouseup', () => { dragging = false; });
+  window.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const width = Math.min(Math.max(300, window.innerWidth - e.clientX), window.innerWidth - 240);
+    main.style.setProperty('--aside', width + 'px');
+  });
+})();
+
+// A box named in the address gets its panel filled without a click.
+function restore() {
+  if (!state.selected) return;
+  const here = childrenAt(state.path);
+  const box = here.find(n => n.id === state.selected)
+           || (nodeAt(state.path)?.id === state.selected ? nodeAt(state.path) : null);
+  if (box) select(box);
+}
+
+if (MODEL) {
+  document.getElementById('panel').innerHTML = '<p class="empty">Pick a box.</p>';
+  readAddress();
+  render();
+  restore();
+} else {
+  document.body.innerHTML = '<p style="padding:24px">No model embedded in this page.</p>';
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AssemblyName>archview</AssemblyName>
+    <RootNamespace>ArchViewer.Extract</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reads compiled assemblies without executing them. Published by
+         Microsoft as part of dotnet/runtime; the alternative is several
+         hundred lines of MetadataReader table parsing. -->
+    <PackageReference Include="System.Reflection.MetadataLoadContext" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\viewer\index.html" Link="viewer.html" />
+  </ItemGroup>
+
+</Project>

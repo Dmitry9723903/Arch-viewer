@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Example.Timesheets.Domain\Example.Timesheets.Domain.csproj" />
+    <ProjectReference Include="..\..\Kernel\Example.Kernel\Example.Kernel.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,207 @@
+# Specification
+
+What `arch-viewer` does, what it deliberately does not do, and the shape of
+the files it reads and writes.
+
+---
+
+## Scope
+
+A tool that reads a .NET repository and renders it as a graph the reader can
+drill into: container → nested container → type → member → source text.
+Dependencies that violate a declared rule are marked, and named.
+
+Other ecosystems are served by writing another extractor. The viewer is not
+modified for them — see [Planned order](#planned-order).
+
+## Three parts
+
+| Part | Reads | Writes | Knows |
+|---|---|---|---|
+| extractor | a repository | model file | one ecosystem |
+| policy | — | — | one architecture, hand-written |
+| viewer | model file | screen | neither |
+
+The model file is the only contract between extractor and viewer.
+
+---
+
+## Decisions
+
+### 1. Metadata, not source text
+
+Containers and edges come from `.csproj` XML via `System.Xml.Linq`. Types and
+members come from assembly metadata via `MetadataLoadContext`, which loads
+compiled assemblies for inspection without executing them. File and line come
+from portable PDBs via `System.Reflection.Metadata`.
+
+`System.Xml.Linq` and `System.Reflection.Metadata` are in the BCL.
+`MetadataLoadContext` is one package, `System.Reflection.MetadataLoadContext`,
+published by Microsoft as part of dotnet/runtime. It is the extractor's only
+dependency; the alternative is several hundred lines of metadata table
+parsing for the same result.
+
+Regular expressions over source are rejected: they mishandle `partial`,
+generics, nested types, file-scoped namespaces and `global using`, and they
+fail without saying so.
+
+### 2. Rules are two-dimensional
+
+A node carries both a **container path** and a **role**. A model where each
+component holds only a rank on one axis can say "this layer must not
+reference that layer"; it cannot say "an adapter may reference *its own*
+application layer and no other", because "its own" is a second axis.
+
+Real layouts need the second axis, so it is in the model from the start
+rather than retrofitted.
+
+### 3. Nothing unmeasured is shown
+
+Colour carries rule violations, which are computed from the model and the
+policy.
+
+Coverage, cyclomatic complexity and mutation results are shown **only** when
+a snapshot that measured them is supplied, and are absent otherwise — absent
+from the model, not zero in the model.
+
+A constant presented as a measurement is worse than a blank, because this
+tool is used in place of reading the code, and a number in that position is
+trusted.
+
+### 4. A page, not a desktop window
+
+The viewer is a page in a browser. A desktop window would mean a UI
+framework dependency for the same result.
+
+---
+
+## Model file
+
+One JSON document: a tree of containers, types inside them, edges listed
+separately.
+
+```json
+{
+  "title": "Example",
+  "root": "/path/to/repository",
+  "nodes": [
+    { "id": "core", "label": "Core", "kind": "group",
+      "children": [
+        { "id": "core/payroll", "label": "Payroll", "kind": "module",
+          "children": [
+            { "id": "Example.Payroll.Domain", "label": "Domain", "kind": "assembly",
+              "role": "domain",
+              "project": "src/Payroll/Example.Payroll.Domain/Example.Payroll.Domain.csproj",
+              "types": [
+                { "id": "Example.Payroll.Domain.Invoice", "name": "Invoice",
+                  "stereotype": "record",
+                  "file": "src/Payroll/Example.Payroll.Domain/Invoice.cs", "line": 14,
+                  "members": [ { "text": "Total : Money", "line": 22 } ] }
+              ] } ] } ] }
+  ],
+  "edges": [
+    { "from": "Example.Payroll.Adapters", "to": "Example.Payroll.Application",
+      "kind": "dependency", "violates": null },
+    { "from": "Example.Payroll.Domain", "to": "Example.Timesheets.Domain",
+      "kind": "dependency", "violates": "domain-is-isolated" }
+  ]
+}
+```
+
+Rules of the format:
+
+- **`kind` is opaque to the viewer.** Any word an extractor likes. The viewer
+  nests and expands; it does not interpret.
+- **`role`** is the second axis: what the container is *within* its parent.
+  Policy rules may match on it.
+- **`violates` carries the rule's id**, not a boolean. A red arrow that
+  cannot say which rule it broke is not actionable.
+- **`line` is optional.** Without PDBs there is no jump to source; everything
+  else still works.
+- Containers without a declared group are collected into one explicit
+  container rather than dropped or attached to an arbitrary parent.
+
+---
+
+## Policy
+
+A hand-written file beside the repository being read. It declares how to
+group containers and which dependencies are forbidden.
+
+```json
+{
+  "title": "Example",
+  "discover": { "projects": "**/*.csproj", "exclude": ["artifacts/**"] },
+  "group": [
+    { "kind": "module", "from": "path-segment", "index": 1 },
+    { "kind": "assembly", "from": "project", "role": "name-suffix" }
+  ],
+  "rules": [
+    { "id": "domain-is-isolated",
+      "subject": { "role": "domain" },
+      "may-reference": [ { "role": "kernel" } ] },
+    { "id": "adapters-serve-their-own-module",
+      "subject": { "role": "adapters" },
+      "may-reference": [ { "role": "application", "same": "module" } ] }
+  ]
+}
+```
+
+`same: "module"` is the second axis in use: the target must sit in the same
+module container as the subject. Without it, the second rule cannot be
+written at all.
+
+Grouping sources available to `group`: `path-segment`, `project`,
+`name-suffix`, `assembly-attribute` (attribute type and property named).
+
+---
+
+## Screen
+
+One page: tree on the left, graph in the middle, node panel on the right.
+
+- **Drill-down.** Clicking a container expands its children in place. A
+  breadcrumb shows the path and walks back up.
+- **Edges.** Drawn between visible nodes; edges of collapsed children roll up
+  into an edge between their containers.
+- **Violations.** Red arrow plus the rule id, and a separate list so they can
+  be read without hovering.
+- **Type.** Declaration and members, read from metadata. A list, available
+  without PDBs.
+- **Source.** Lines of the file from the declaration to the end of the type,
+  plus a `vscode://file/<path>:<line>` link that opens an editor there.
+
+---
+
+## Planned order
+
+Capabilities arrive in this order, each usable on its own:
+
+1. **Extractor** — containers and edges written to a model file.
+2. **Viewer** — tree and edges, expanding on click.
+3. **Policy** — rules applied, violations marked and named.
+4. **Types** — types and members of each assembly.
+5. **Source** — fragment in the panel, link into an editor.
+6. **A second layout** — a differently organised repository, rendered
+   without modifying the viewer.
+
+Step 6 is the real test of the design rather than a feature: if it needs
+viewer changes, the separation between extractor, policy and viewer did not
+happen.
+
+---
+
+## Out of scope for now
+
+Named, not forgotten:
+
+- **metrics** — coverage, cyclomatic complexity, mutation results; each needs
+  a tool that measures it, and until then they are absent (decision 3);
+- **what-if** — proposing a regrouping before changing code; a good idea, but
+  it is about changing structure, not showing it;
+- **agent mailbox** — a file protocol for driving an assistant from the
+  screen;
+- **non-.NET extractors** — once the model file has been proven by two
+  different .NET layouts;
+- **concentric layout** — the ring drawing suits a strictly layered
+  architecture and misrepresents anything else.
