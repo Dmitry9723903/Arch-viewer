@@ -267,9 +267,26 @@ function renderCounts(nodes, current) {
   const scope = current ? [current] : MODEL.nodes;
   const leaves = new Set(scope.flatMap(n => leavesOf(n)));
   const bad = MODEL.edges.filter(e => e.violates && leaves.has(e.from));
+
+  // Leaves are not projects: below the project level they are namespaces, and
+  // calling thirty namespaces "projects" is simply wrong.
+  const projects = count(scope, n => n.kind === 'project');
+  const types = scope.reduce((sum, n) => sum + countTypes(n), 0);
+
   document.getElementById('counts').innerHTML =
-    `<b>${nodes.length}</b> here · <b>${leaves.size}</b> projects · ` +
+    `<b>${nodes.length}</b> here · ` +
+    (projects ? `<b>${projects}</b> projects · ` : '') +
+    `<b>${types}</b> types · ` +
     (bad.length ? `<span class="bad"><b>${bad.length}</b> violations</span>` : `<span>no violations</span>`);
+}
+
+function count(nodes, fits) {
+  let n = 0;
+  for (const node of nodes) {
+    if (fits(node)) n++;
+    n += count(node.children || [], fits);
+  }
+  return n;
 }
 
 function select(n) {

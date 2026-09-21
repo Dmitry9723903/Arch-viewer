@@ -128,6 +128,28 @@ Rules of the format:
 A hand-written file beside the repository being read. It declares how to
 group containers and which dependencies are forbidden.
 
+### Where the structure lives
+
+Two repositories can both be .NET and keep their structure in different
+places. Where one boundary means one project, grouping projects is enough and
+a type list per project is short. Where a handful of projects hold hundreds of
+types, the structure is in the namespaces, and a project's flat list of two
+hundred types tells the reader nothing.
+
+`types` arranges a project's own types:
+
+```json
+"types": { "by": "namespace", "kind": "namespace", "trimAssemblyPrefix": true }
+```
+
+`trimAssemblyPrefix` drops the leading part of a namespace that merely repeats
+the assembly's name: nesting six levels to reach the one that differs helps
+nobody. Types declared in the assembly's root namespace stay on the project
+itself.
+
+Left out, types stay flat — which is right for a repository whose projects are
+already the modules.
+
 ```json
 {
   "title": "Example",
@@ -192,11 +214,12 @@ Capabilities arrive in this order, each usable on its own:
 4. **Types** — types and members of each assembly.
 5. **Source** — fragment in the panel, link into an editor.
 6. **A second layout** — a differently organised repository, rendered
-   without modifying the viewer.
+   without modifying the viewer. **Done.**
 
-Step 6 is the real test of the design rather than a feature: if it needs
-viewer changes, the separation between extractor, policy and viewer did not
-happen.
+Step 6 was the real test of the design rather than a feature, and it passed:
+arranging types by namespace for a repository whose structure lives below the
+project level required no change to the viewer at all. A namespace container
+is a container like any other, and the viewer never learned the word.
 
 ---
 

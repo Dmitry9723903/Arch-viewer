@@ -19,7 +19,6 @@ public static class Builder
         var roots = new List<Node>();
         var byPath = new Dictionary<string, MutableNode>(StringComparer.Ordinal);
         var top = new List<MutableNode>();
-        _ = policy;
 
         foreach (var placement in placements)
         {
@@ -42,13 +41,21 @@ public static class Builder
                 parentList = node.Children;
             }
 
+            var declared = facts.Types(placement.Project.Name);
+
             var leaf = new MutableNode(placement.Project.Name, placement.Project.Name, "project")
             {
                 Role = placement.Role,
                 Project = placement.Project.RelativePath,
-                Types = facts.Types(placement.Project.Name),
+                Types = declared,
                 GroupPath = placement.Groups.Select(g => g.Name).ToList(),
             };
+
+            if (policy.Types is { } arrangement
+                && string.Equals(arrangement.By, "namespace", StringComparison.OrdinalIgnoreCase))
+            {
+                Namespaces.Arrange(leaf, declared, placement.Project.Name, arrangement);
+            }
 
             parentList.Add(leaf);
             byPath[leaf.Id] = leaf;
@@ -109,6 +116,91 @@ public static class Builder
 }
 
 /// <summary>
+/// Arranges a project's types into the tree its namespaces describe.
+/// Where a project is the module — one assembly per boundary — this is
+/// noise. Where a repository has few projects and many namespaces, this is
+/// the only place its structure is written down.
+/// </summary>
+internal static class Namespaces
+{
+    /// <summary>
+    /// Replaces a project's flat list of types with containers per namespace,
+    /// keeping in place those declared in the project's own root namespace.
+    /// </summary>
+    public static void Arrange(
+        MutableNode project,
+        IReadOnlyList<TypeNode> types,
+        string assemblyName,
+        TypeGrouping arrangement)
+    {
+        var own = new List<TypeNode>();
+        var nested = new Dictionary<string, MutableNode>(StringComparer.Ordinal);
+
+        foreach (var type in types)
+        {
+            var space = NamespaceOf(type.Id);
+            var tail = arrangement.TrimAssemblyPrefix ? Trim(space, assemblyName) : space;
+
+            if (tail.Length == 0)
+            {
+                own.Add(type);
+                continue;
+            }
+
+            Place(project, nested, tail, type, arrangement.Kind);
+        }
+
+        project.Types = own;
+    }
+
+    private static void Place(
+        MutableNode project,
+        Dictionary<string, MutableNode> nested,
+        string tail,
+        TypeNode type,
+        string kind)
+    {
+        var parts = tail.Split('.');
+        var parent = project;
+        var path = project.Id;
+
+        foreach (var part in parts)
+        {
+            path = $"{path}.{part}";
+
+            if (!nested.TryGetValue(path, out var node))
+            {
+                node = new MutableNode(path, part, kind);
+                nested[path] = node;
+                parent.Children.Add(node);
+            }
+
+            parent = node;
+        }
+
+        parent.Types = parent.Types.Append(type).ToList();
+    }
+
+    private static string NamespaceOf(string fullName)
+    {
+        var cut = fullName.LastIndexOf('.');
+        return cut < 0 ? "" : fullName[..cut];
+    }
+
+    private static string Trim(string space, string assemblyName)
+    {
+        if (string.Equals(space, assemblyName, StringComparison.Ordinal))
+        {
+            return "";
+        }
+
+        return space.StartsWith(assemblyName + ".", StringComparison.Ordinal)
+            ? space[(assemblyName.Length + 1)..]
+            : space;
+    }
+}
+
+/// <summary>
 /// A container while it is still being assembled.
 /// </summary>
 internal sealed class MutableNode(string id, string label, string kind)
@@ -131,8 +223,8 @@ internal sealed class MutableNode(string id, string label, string kind)
     /// <summary>Group names above this node, outermost first.</summary>
     public IReadOnlyList<string> GroupPath { get; init; } = Array.Empty<string>();
 
-    /// <summary>Types, for a leaf.</summary>
-    public IReadOnlyList<TypeNode> Types { get; init; } = Array.Empty<TypeNode>();
+    /// <summary>Types declared directly in this container.</summary>
+    public IReadOnlyList<TypeNode> Types { get; set; } = Array.Empty<TypeNode>();
 
     /// <summary>Nested containers.</summary>
     public List<MutableNode> Children { get; } = new();

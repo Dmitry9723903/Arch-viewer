@@ -21,6 +21,14 @@ public sealed class Policy
     public IReadOnlyList<Rule> Rules { get; init; } = Array.Empty<Rule>();
 
     /// <summary>
+    /// How the types of a project are arranged. Left out, they hang off the
+    /// project in one flat list — which is fine for a repository whose
+    /// projects are small, and useless for one whose structure lives a floor
+    /// below the project.
+    /// </summary>
+    public TypeGrouping? Types { get; init; }
+
+    /// <summary>
     /// Reads a policy file, or returns a default that groups by directory.
     /// </summary>
     public static Policy Load(string? path, string root)
@@ -45,6 +53,30 @@ public sealed class Policy
             Group = new[] { new GroupRule { Kind = "folder", From = "path-segment", Index = 1 } },
         };
     }
+}
+
+/// <summary>
+/// How types are arranged inside the project that declares them.
+/// </summary>
+public sealed class TypeGrouping
+{
+    /// <summary>
+    /// "namespace" nests types by their namespace; anything else leaves them
+    /// flat.
+    /// </summary>
+    public string By { get; init; } = "flat";
+
+    /// <summary>
+    /// Word written into the kind of the containers this produces.
+    /// </summary>
+    public string Kind { get; init; } = "namespace";
+
+    /// <summary>
+    /// Whether to drop the leading part of a namespace that merely repeats
+    /// the assembly's own name. Nesting six levels to reach the one that
+    /// differs helps nobody.
+    /// </summary>
+    public bool TrimAssemblyPrefix { get; init; } = true;
 }
 
 /// <summary>
