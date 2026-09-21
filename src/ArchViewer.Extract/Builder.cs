@@ -176,22 +176,40 @@ public static class Builder
 
             foreach (var reference in placement.Project.References)
             {
-                if (!byName.TryGetValue(reference, out var to))
-                {
-                    continue;
-                }
+                Link(edges, byName, from, reference, "dependency", policy);
+            }
 
-                edges.Add(new Edge
-                {
-                    From = from.Id,
-                    To = to.Id,
-                    Kind = "dependency",
-                    Violates = Rules.Check(from, to, policy),
-                });
+            // A package that is also a project here is this repository
+            // depending on itself through its own feed.
+            foreach (var package in placement.Project.Packages)
+            {
+                Link(edges, byName, from, package, "package", policy);
             }
         }
 
         return edges;
+    }
+
+    private static void Link(
+        List<Edge> edges,
+        Dictionary<string, MutableNode> byName,
+        MutableNode from,
+        string target,
+        string kind,
+        Policy policy)
+    {
+        if (!byName.TryGetValue(target, out var to) || ReferenceEquals(from, to))
+        {
+            return;
+        }
+
+        edges.Add(new Edge
+        {
+            From = from.Id,
+            To = to.Id,
+            Kind = kind,
+            Violates = Rules.Check(from, to, policy),
+        });
     }
 }
 

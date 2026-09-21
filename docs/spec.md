@@ -156,6 +156,17 @@ itself.
 Left out, types stay flat — which is right for a repository whose projects are
 already the modules.
 
+### A repository that ships itself as packages
+
+A `PackageReference` naming a project of this same repository is an internal
+dependency wearing a package's clothes. Some repositories build their platform
+into a local feed and have their products consume it that way; reading only
+`ProjectReference` there shows products depending on nothing, which is the
+opposite of true. Such edges are recorded with kind `package`.
+
+A package that is not a project here is left alone: it is not a boundary of
+this repository.
+
 ### References between types
 
 `"edges": true` inside `types` records what each type inherits, implements and
@@ -189,6 +200,10 @@ edges at all: it names them inside a method. So a rule of the form "nothing
 but the composition root may reference the implementations" cannot be checked
 by this model, and a repository whose wiring lives in `AddScoped` calls will
 look less connected than it is.
+
+**Only portable PDBs are read.** A repository built on .NET Framework writes
+Windows PDBs, and no source appears at all — the graph, the types and their
+members are still there, the text is not.
 
 **A reference obtained transitively looks the same as a direct one.** A
 project declaring one project reference may still use a type that arrives
