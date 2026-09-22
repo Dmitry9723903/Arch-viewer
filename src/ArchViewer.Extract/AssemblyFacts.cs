@@ -754,9 +754,9 @@ public sealed class AssemblyFacts : IDisposable
             // third-party tools that are not managed code at all, and
             // handing those to the resolver buys nothing and risks a throw.
             if ((!executable || want.Contains(name))
-                && (!all.TryGetValue(name, out var best) || Better(own, written, best)))
+                && (!all.TryGetValue(name, out var best) || Better(own, written, executable, best)))
             {
-                all[name] = new Candidate(dll, written, own);
+                all[name] = new Candidate(dll, written, own, executable);
             }
 
             if (!want.Contains(name))
@@ -766,9 +766,10 @@ public sealed class AssemblyFacts : IDisposable
 
             seen++;
 
-            if (!newest.TryGetValue(name, out var current) || Better(own, written, current))
+            if (!newest.TryGetValue(name, out var current)
+                || Better(own, written, executable, current))
             {
-                newest[name] = new Candidate(dll, written, own);
+                newest[name] = new Candidate(dll, written, own, executable);
             }
         }
 
@@ -778,14 +779,31 @@ public sealed class AssemblyFacts : IDisposable
     }
 
     /// <summary>One copy of an assembly, and what is known about it.</summary>
-    private readonly record struct Candidate(string Path, DateTime Written, bool Own);
+    private readonly record struct Candidate(
+        string Path, DateTime Written, bool Own, bool Executable);
 
     /// <summary>
-    /// Whether a candidate beats the one already held: its own output first,
-    /// then the newer file.
+    /// Whether a candidate beats the one already held: a .dll first, then
+    /// its own output, then the newer file.
+    /// <para>
+    /// The .dll comes first because on Windows a .NET application builds
+    /// both — the assembly as <c>App.dll</c> and, beside it, <c>App.exe</c>,
+    /// which is a native launcher holding no metadata at all. Chosen by
+    /// date, the launcher wins as often as not, and the project it belongs
+    /// to then shows no types whatever, exactly as if nobody had built it.
+    /// An .exe is the assembly only where there is no .dll of that name,
+    /// which is how .NET Framework built applications.
+    /// </para>
     /// </summary>
-    private static bool Better(bool own, DateTime written, Candidate held) =>
-        own != held.Own ? own : written > held.Written;
+    private static bool Better(bool own, DateTime written, bool executable, Candidate held)
+    {
+        if (executable != held.Executable)
+        {
+            return !executable;
+        }
+
+        return own != held.Own ? own : written > held.Written;
+    }
 
     /// <summary>
     /// Whether this path is the output of the project that builds the
