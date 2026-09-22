@@ -31,6 +31,27 @@ const SKIP = [
     'tests/fixtures', 'build', 'dist',
 ];
 
+/**
+ * The lines of a declaration, cut when it is longer than anyone will read.
+ *
+ * A class of seven thousand lines is a fact about the repository, not a thing
+ * to put in a page: eighty-five per cent of one map's weight was source text,
+ * and the page would not open. The cut is stated in the text rather than done
+ * quietly.
+ */
+function fragment(array $lines, int $from, int $to, int $limit = 400): string
+{
+    $count = $to - $from + 1;
+    $taken = implode("\n", array_slice($lines, $from - 1, min($count, $limit)));
+
+    if ($count <= $limit) {
+        return $taken;
+    }
+
+    $rest = $count - $limit;
+    return $taken . "\n\n… {$rest} more lines; open the file to read them.";
+}
+
 /** Files worth reading. */
 function files(string $root): array
 {
@@ -135,12 +156,21 @@ function readWithParser(string $root, string $file): array
 
             $bases = [];
             if (isset($node->extends)) {
-                foreach ((array) $node->extends as $parent) {
-                    $bases[] = ['name' => $parent->toString(), 'kind' => 'inheritance'];
+                // A class extends one name; an interface may extend several,
+                // so the field is a name in one case and a list in the other.
+                // Casting either to an array is wrong: on an object it yields
+                // that object's properties.
+                $parents = is_array($node->extends) ? $node->extends : [$node->extends];
+                foreach ($parents as $parent) {
+                    if ($parent instanceof PhpParser\Node\Name) {
+                        $bases[] = ['name' => $parent->toString(), 'kind' => 'inheritance'];
+                    }
                 }
             }
             foreach ($node->implements ?? [] as $contract) {
-                $bases[] = ['name' => $contract->toString(), 'kind' => 'implements'];
+                if ($contract instanceof PhpParser\Node\Name) {
+                    $bases[] = ['name' => $contract->toString(), 'kind' => 'implements'];
+                }
             }
 
             $members = [];
@@ -161,7 +191,7 @@ function readWithParser(string $root, string $file): array
                 'file' => $relative,
                 'line' => $start,
                 'endLine' => $end,
-                'source' => implode("\n", array_slice($lines, $start - 1, $end - $start + 1)),
+                'source' => fragment($lines, $start, $end),
                 'members' => $members,
                 'bases' => $bases,
             ];
@@ -315,7 +345,7 @@ function readWithTokens(string $root, string $file): array
             'file' => $relative,
             'line' => $above,
             'endLine' => max($end, $start),
-            'source' => implode("\n", array_slice($lines, $above - 1, max($end, $start) - $above + 1)),
+            'source' => fragment($lines, $above, max($end, $start)),
             'members' => [],
             'bases' => $bases,
         ];
@@ -369,7 +399,19 @@ function build(string $root, array $modules, string $title, int $depth): array
             }
         }
 
-        $parts = $namespace === '' ? [] : array_slice(explode('\\', $namespace), 0, $depth);
+        // A file without a namespace has no container of its own, and legacy
+        // PHP is mostly such files: leaving them at the root put two and a
+        // half thousand boxes on one screen. They are grouped by directory
+        // instead, and the container says which it is — a namespace and a
+        // folder are different things and must not sit unlabelled together.
+        if ($namespace === '') {
+            $directory = trim(dirname($module['relative']), '.');
+            $parts = $directory === '' ? [] : array_slice(explode('/', $directory), 0, $depth);
+            $kind = 'folder';
+        } else {
+            $parts = array_slice(explode('\\', $namespace), 0, $depth);
+            $kind = 'namespace';
+        }
         $leaf = [
             'id' => $module['id'],
             'label' => basename($module['id'], '.php'),
@@ -391,10 +433,11 @@ function build(string $root, array $modules, string $title, int $depth): array
         } else {
             $parent = &$roots;
             $at = '';
+            $separator = $kind === 'folder' ? '/' : '\\';
             foreach ($parts as $part) {
-                $at = $at === '' ? $part : $at . '\\' . $part;
+                $at = $at === '' ? $part : $at . $separator . $part;
                 if (!isset($parent[$at])) {
-                    $parent[$at] = ['id' => $at, 'label' => $part, 'kind' => 'namespace',
+                    $parent[$at] = ['id' => $at, 'label' => $part, 'kind' => $kind,
                                     'children' => [], 'types' => []];
                 }
                 $parent = &$parent[$at]['children'];
@@ -473,6 +516,7 @@ $out = $option('--out', 'arch.html');
 $title = $option('--title', basename($root));
 $depth = (int) $option('--depth', '2');
 $forceTokens = in_array('--tokens', $arguments, true);
+$withoutSource = in_array('--no-source', $arguments, true);
 
 $autoload = $forceTokens ? null : findParser($root);
 $reader = $autoload === null ? 'token_get_all' : 'nikic/PHP-Parser';
@@ -495,6 +539,16 @@ foreach ($found as $file) {
         'types' => $read['types'],
         'imports' => $read['imports'],
     ];
+}
+
+if ($withoutSource) {
+    foreach ($modules as &$module) {
+        foreach ($module['types'] as &$type) {
+            $type['source'] = null;
+        }
+        unset($type);
+    }
+    unset($module);
 }
 
 $model = build($root, $modules, $title, $depth);
@@ -521,4 +575,17 @@ echo "written    {$out}\n";
 
 if ($unreadable > 0) {
     echo "\n{$unreadable} files were not read; they are named above.\n";
+}
+
+// A page is opened in a browser, and one of many megabytes is opened by
+// nobody. Source text is most of that weight, so the way out is named here
+// rather than left for the reader to discover by waiting.
+$weight = strlen($json);
+
+if ($weight > 8_000_000 && !$withoutSource) {
+    printf(
+        "\nThe model is %.1f MB, most of it source text. A page this size may not open.\n",
+        $weight / 1_000_000
+    );
+    echo "Run again with --no-source for the structure alone.\n";
 }

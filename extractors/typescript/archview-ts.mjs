@@ -97,6 +97,18 @@ function members(ts, node, text) {
   return found;
 }
 
+// The lines of a declaration, cut when it is longer than anyone will read. A
+// declaration of several thousand lines is a fact about the repository, not
+// something to carry inside a page: source text is most of a map's weight, and
+// a page that will not open shows nothing at all. The cut is stated.
+function fragment(lines, from, to, limit = 400) {
+  const count = to - from + 1;
+  const taken = lines.slice(from - 1, from - 1 + Math.min(count, limit)).join('\n');
+  return count <= limit
+    ? taken
+    : `${taken}\n\n… ${count - limit} more lines; open the file to read them.`;
+}
+
 /** Reads one file: what it declares and what it imports. */
 function readModule(ts, root, file) {
   const text = fs.readFileSync(file, 'utf8');
@@ -144,7 +156,7 @@ function readModule(ts, root, file) {
       file: relative,
       line: start + 1,
       endLine: end + 1,
-      source: lines.slice(start, end + 1).join('\n'),
+      source: fragment(lines, start + 1, end + 1),
       members: members(ts, node, source),
       bases,
     });

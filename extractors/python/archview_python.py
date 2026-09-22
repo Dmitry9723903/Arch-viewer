@@ -113,6 +113,22 @@ def members(node: ast.ClassDef) -> list[dict]:
     return found
 
 
+def fragment(lines: list[str], start: int, end: int, limit: int = 400) -> str:
+    """The lines of a declaration, cut when it is longer than anyone will read.
+
+    A class of several thousand lines is a fact about the repository, not
+    something to carry inside a page — source text is most of a map's weight,
+    and a page that will not open shows nothing at all. The cut is stated.
+    """
+    count = end - start + 1
+    taken = "\n".join(lines[start - 1 : start - 1 + min(count, limit)])
+
+    if count <= limit:
+        return taken
+
+    return f"{taken}\n\n… {count - limit} more lines; open the file to read them."
+
+
 def read_module(root: Path, path: Path) -> Module | None:
     """Parses one file.  A file that will not parse is reported, not skipped."""
     try:
@@ -175,7 +191,7 @@ def read_module(root: Path, path: Path) -> Module | None:
                 file=relative,
                 line=start,
                 end_line=end,
-                source="\n".join(lines[start - 1 : end]),
+                source=fragment(lines, start, end),
                 members=members(node),
                 bases_raw=[ast.unparse(b) for b in node.bases],
             )
