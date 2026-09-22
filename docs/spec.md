@@ -45,6 +45,10 @@ Three properties it must keep:
   .NET pass. In one process that fault took the Python and PHP maps with it.
   Now the pass is named, the signal that killed it is printed, and the rest
   of the repository is still drawn.
+- **It weighs what it produced.** Each extractor watches its own part and none
+  of them sees the whole; three parts that each pass for reasonable join into
+  a page nothing opens. The size is checked after joining, and `--no-source`
+  is named only where it can still be used.
 - **It is not the only way in.** Each extractor stays runnable alone, which is
   what keeps this part from accumulating language knowledge.
 

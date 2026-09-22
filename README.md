@@ -144,7 +144,13 @@ archview all <repository> --out arch.html
 ```
 
 An ecosystem whose runtime is missing is named with the reason and left out;
-it is never silently dropped. `--no-build` skips building the .NET part.
+it is never silently dropped, and neither is one whose extractor crashes —
+each pass runs in its own process, so a fault in one still leaves a map of the
+rest.
+
+`--no-build` skips building the .NET part. `--no-source` drops the source text
+and keeps the structure and line numbers, for a repository large enough that
+the page would not open; the command weighs the finished page and says so.
 
 The extractors are also usable one at a time, which is what `all` does for
 you:

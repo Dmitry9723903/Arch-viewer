@@ -344,6 +344,19 @@ def page(model: dict, viewer: Path) -> str:
     )
 
 
+def strip_source(nodes: list[dict]) -> None:
+    """Drops the source text, keeping where each type is declared.
+
+    The text is most of a large map's weight, and a page that will not open
+    shows nothing at all. The file and the lines cost a few bytes and are what
+    a reader needs to go and look at the code itself.
+    """
+    for node in nodes:
+        for declared in node.get("types", []):
+            declared.pop("source", None)
+        strip_source(node.get("children", []))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Reads a Python repository into the arch-viewer model."
@@ -355,6 +368,11 @@ def main() -> int:
         "--viewer",
         default=None,
         help="The viewer page to embed the model into. Defaults to the one in this repository.",
+    )
+    parser.add_argument(
+        "--no-source",
+        action="store_true",
+        help="Leave the source text out; keep the structure and the line numbers.",
     )
     parser.add_argument(
         "--depth",
@@ -377,6 +395,9 @@ def main() -> int:
 
     modules = [m for m in (read_module(root, p) for p in files) if m is not None]
     model = build(root, modules, arguments.title or root.name, arguments.depth)
+
+    if arguments.no_source:
+        strip_source(model["nodes"])
 
     out = Path(arguments.out)
     out.with_suffix(".json").write_text(

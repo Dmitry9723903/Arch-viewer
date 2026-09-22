@@ -249,9 +249,10 @@ const repository = args[0];
 const out = args.includes('--out') ? args[args.indexOf('--out') + 1] : 'arch.html';
 const title = args.includes('--title') ? args[args.indexOf('--title') + 1] : null;
 const depth = args.includes('--depth') ? Number(args[args.indexOf('--depth') + 1]) : 2;
+const withoutSource = args.includes('--no-source');
 
 if (!repository || !fs.existsSync(repository)) {
-  console.error('usage: archview-ts.mjs <repository> [--out arch.html] [--title name] [--depth n]');
+  console.error('usage: archview-ts.mjs <repository> [--out arch.html] [--title name] [--depth n] [--no-source]');
   process.exit(1);
 }
 
@@ -278,6 +279,18 @@ for (const file of files) {
 }
 
 const model = build(root, modules, title ?? path.basename(root), depth);
+
+// The text is most of a large map's weight, and a page that will not open
+// shows nothing at all. Where a type is declared costs a few bytes and stays.
+function stripSource(nodes) {
+  for (const node of nodes) {
+    for (const declared of node.types ?? []) delete declared.source;
+    stripSource(node.children ?? []);
+  }
+}
+
+if (withoutSource) stripSource(model.nodes);
+
 const json = JSON.stringify(model, null, 2);
 fs.writeFileSync(out.replace(/\.html$/, '.json'), json);
 

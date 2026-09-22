@@ -45,6 +45,13 @@ public sealed class AssemblyFacts : IDisposable
     public int PassedOver { get; init; }
 
     /// <summary>
+    /// Whether to leave the source text out of the model. Where each type is
+    /// declared is still recorded — the file and the lines are a few bytes,
+    /// while the text of a large repository is most of the page's weight.
+    /// </summary>
+    public bool WithoutSource { get; init; }
+
+    /// <summary>
     /// When the oldest assembly actually read was written. Reported, not used
     /// for judging source: each assembly is compared against its own build
     /// time, since a build rewrites only what changed.
@@ -57,13 +64,18 @@ public sealed class AssemblyFacts : IDisposable
     public static AssemblyFacts Load(
         string root,
         IReadOnlyList<string> wanted,
-        IReadOnlyList<string>? exclude = null)
+        IReadOnlyList<string>? exclude = null,
+        bool withoutSource = false)
     {
         var binaries = FindBinaries(root, wanted, out var everything, out var passedOver);
 
         if (binaries.Count == 0)
         {
-            return new AssemblyFacts(root, null) { PassedOver = passedOver };
+            return new AssemblyFacts(root, null)
+            {
+                PassedOver = passedOver,
+                WithoutSource = withoutSource,
+            };
         }
 
         var runtime = Directory.EnumerateFiles(
@@ -111,6 +123,7 @@ public sealed class AssemblyFacts : IDisposable
         var facts = new AssemblyFacts(root, context)
         {
             PassedOver = passedOver,
+            WithoutSource = withoutSource,
             Built = binaries.Values
                 .Select(path => File.GetLastWriteTimeUtc(path))
                 .DefaultIfEmpty(DateTime.MinValue)
@@ -247,7 +260,7 @@ public sealed class AssemblyFacts : IDisposable
                     File = declared?.File ?? location?.File,
                     Line = fragment?.Start ?? location?.First,
                     EndLine = fragment?.End ?? location?.Last,
-                    Source = fragment?.Text,
+                    Source = WithoutSource ? null : fragment?.Text,
                     Members = Members(type),
                 });
             }

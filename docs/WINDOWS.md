@@ -40,8 +40,13 @@ editor shows you its source.
 
 The run prints a section per language. One whose runtime is not installed is
 named with that reason and left out, so a missing map always has a stated
-cause. If you already built the solution yourself, `--no-build` skips that
-step.
+cause. Each language is read in its own process, so a crash in one still
+leaves a map of the rest.
+
+If you already built the solution yourself, `--no-build` skips that step. On a
+very large repository add `--no-source`: the structure and the line numbers
+stay, the text does not, and the page shrinks by about two thirds. The command
+weighs the page it wrote and tells you when it is large enough to matter.
 
 The TypeScript extractor uses the compiler from the repository you point it
 at, so `npm install` there first if you want the client read. The PHP one uses
@@ -71,8 +76,9 @@ the other languages, so the map you get is missing that one part and says so.
 Open an issue with the line it printed — a crash is a defect in the extractor,
 not something to work around.
 
-**The page is blank.** The model may be too large — the run says so and names
-`--no-source`, which drops the text and keeps the structure.
+**The page is blank.** The model may be too large — the run weighs the page it
+wrote and names `--no-source`, which drops the text and keeps the structure.
+A 3,500-type repository goes from 24 MB to 8 MB that way.
 
 **A directory is missing.** The run names what it could not read and why. An
 area of Python or TypeScript needs that language's extractor; the .NET one

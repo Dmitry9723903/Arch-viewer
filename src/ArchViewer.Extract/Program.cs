@@ -16,7 +16,7 @@ public static class Program
         if (args.Length == 0 || args[0] is "-h" or "--help")
         {
             Console.WriteLine("usage: archview <repository> [--policy <file>] [--out <file.html>] [--no-types]");
-            Console.WriteLine("       archview all <repository> [--out <file.html>] [--title <name>] [--policy <file>] [--no-build]");
+            Console.WriteLine("       archview all <repository> [--out <file.html>] [--title <name>] [--policy <file>] [--no-build] [--no-source]");
             Console.WriteLine("       archview merge <model.json> … [--out <file.html>] [--title <name>]");
             return args.Length == 0 ? 1 : 0;
         }
@@ -39,7 +39,8 @@ public static class Program
                 Option(args, "--out") ?? Path.Combine(Environment.CurrentDirectory, "arch.html"),
                 Option(args, "--title"),
                 Option(args, "--policy"),
-                build: !args.Contains("--no-build"));
+                build: !args.Contains("--no-build"),
+                withoutSource: args.Contains("--no-source"));
         }
 
         var root = Path.GetFullPath(args[0]);
@@ -82,9 +83,12 @@ public static class Program
             return 1;
         }
 
+        var withoutSource = args.Contains("--no-source");
+
         using var facts = withTypes
-            ? AssemblyFacts.Load(root, projects.Select(p => p.Name).ToList(), policy.Exclude)
-            : AssemblyFacts.Load(root, Array.Empty<string>(), policy.Exclude);
+            ? AssemblyFacts.Load(
+                root, projects.Select(p => p.Name).ToList(), policy.Exclude, withoutSource)
+            : AssemblyFacts.Load(root, Array.Empty<string>(), policy.Exclude, withoutSource);
 
         var placements = Grouping.Place(projects, policy, facts);
         var model = Builder.Build(root, policy, placements, facts);

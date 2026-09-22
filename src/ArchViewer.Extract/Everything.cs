@@ -31,7 +31,13 @@ internal static class Everything
     /// <param name="title">Name for the whole.</param>
     /// <param name="policy">Policy for the .NET part, when there is one.</param>
     /// <returns>Zero when a page was written.</returns>
-    public static int Read(string root, string outPath, string? title, string? policy, bool build)
+    public static int Read(
+        string root,
+        string outPath,
+        string? title,
+        string? policy,
+        bool build,
+        bool withoutSource)
     {
         var tools = Path.GetDirectoryName(typeof(Everything).Assembly.Location);
         var home = Home(tools);
@@ -71,6 +77,11 @@ internal static class Everything
                 {
                     root, "--out", Path.ChangeExtension(model, ".html"), "--title", ".NET",
                 };
+
+                if (withoutSource)
+                {
+                    arguments.Add("--no-source");
+                }
 
                 if (others.Count > 0)
                 {
@@ -122,10 +133,17 @@ internal static class Everything
                 var page = Path.Combine(work.FullName, $"{part.Name.ToLowerInvariant()}.html");
                 var model = Path.ChangeExtension(page, ".json");
 
-                var code = Run(runner, new List<string>
+                var forPart = new List<string>
                 {
                     part.Extractor, part.Argument, "--out", page, "--title", part.Name,
-                });
+                };
+
+                if (withoutSource)
+                {
+                    forPart.Add("--no-source");
+                }
+
+                var code = Run(runner, forPart);
 
                 if (code == 0 && File.Exists(model))
                 {
@@ -186,6 +204,8 @@ internal static class Everything
                 }
             }
 
+            Weight(outPath, withoutSource);
+
             Console.WriteLine();
             Console.WriteLine($"Open {outPath} in a browser.");
             return 0;
@@ -199,6 +219,41 @@ internal static class Everything
             catch (IOException)
             {
             }
+        }
+    }
+
+    /// <summary>
+    /// Says so when the page is large enough that a browser may refuse it.
+    /// <para>
+    /// Each extractor watches its own part, and none of them sees the whole:
+    /// three parts that each pass for reasonable join into a page nothing
+    /// opens. Advising a flag the caller cannot reach would be worse than
+    /// silence, so this is said only where --no-source can still be used.
+    /// </para>
+    /// </summary>
+    private static void Weight(string outPath, bool withoutSource)
+    {
+        const long large = 12L * 1024 * 1024;
+
+        try
+        {
+            var size = new FileInfo(outPath).Length;
+
+            if (size < large)
+            {
+                return;
+            }
+
+            Console.WriteLine();
+            Console.WriteLine(
+                $"The page is {size / (1024.0 * 1024.0):0.#} MB, and one this size may not open.");
+
+            Console.WriteLine(withoutSource
+                ? "It holds no source text already; narrow the repository instead."
+                : "Run again with --no-source for the structure without the text.");
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
         }
     }
 
