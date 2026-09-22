@@ -489,16 +489,23 @@ internal static class Rules
                 continue;
             }
 
-            if (!Matches(rule.Subject, from, from, policy))
+            // "What may this reach" — the subject is the one referencing.
+            if (rule.MayReference.Count > 0 && Matches(rule.Subject, from, from, policy))
             {
-                continue;
+                if (!rule.MayReference.Any(selector => Matches(selector, to, from, policy)))
+                {
+                    return rule.Id;
+                }
             }
 
-            var allowed = rule.MayReference.Any(selector => Matches(selector, to, from, policy));
-
-            if (!allowed)
+            // "Who may reach this" — the subject is the one referenced, and
+            // the rule is broken by whoever is not on the list.
+            if (rule.ReferencedOnlyBy.Count > 0 && Matches(rule.Subject, to, to, policy))
             {
-                return rule.Id;
+                if (!rule.ReferencedOnlyBy.Any(selector => Matches(selector, from, to, policy)))
+                {
+                    return rule.Id;
+                }
             }
         }
 

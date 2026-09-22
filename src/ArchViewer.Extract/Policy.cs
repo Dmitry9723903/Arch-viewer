@@ -149,6 +149,18 @@ public sealed class Rule
     public IReadOnlyList<Selector> MayReference { get; init; } = Array.Empty<Selector>();
 
     /// <summary>
+    /// Who may reference the subject. Anyone else violates.
+    ///
+    /// The other direction, and it says something a whitelist cannot: "the
+    /// legacy database is reached through one door". A rule of the first kind
+    /// constrains what its subject reaches; only a rule of this kind can
+    /// constrain who reaches it, and that is usually the invariant worth
+    /// protecting — one that breaks when somebody new starts depending on
+    /// something old.
+    /// </summary>
+    public IReadOnlyList<Selector> ReferencedOnlyBy { get; init; } = Array.Empty<Selector>();
+
+    /// <summary>
     /// Kinds of reference this rule judges — dependency, package,
     /// association, implements, inheritance. Empty means all of them.
     ///

@@ -70,6 +70,11 @@ projects hold four hundred types, it is seven arrows that say nothing, and the
 architecture lives in the namespaces — so types group by namespace, and what
 they inherit, implement and hold becomes edges a rule can constrain.
 
+**Rules work in both directions.** A whitelist says what a component may
+reach. The invariant usually worth protecting is the other one — "this is
+reached through exactly one door" — and it breaks when somebody new starts
+depending on something old, which no whitelist elsewhere would notice.
+
 **Rules are two-dimensional.** A layered model where every component has a
 single rank can express "this layer may not reference that layer". It cannot
 express "an adapter may reference *its own* application layer and no other",
