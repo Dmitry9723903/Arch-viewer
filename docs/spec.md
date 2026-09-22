@@ -351,6 +351,11 @@ One page: tree on the left, graph in the middle, node panel on the right.
 
 - **Drill-down.** Clicking a container expands its children in place. A
   breadcrumb shows the path and walks back up.
+- **Anchors.** A reference whose other end is not on this level is drawn at
+  the edge, named, with the number of references behind it, and leads there
+  when clicked. Without them a level of value types looks unconnected when in
+  truth everything above it depends on those types; drawn small, dashed and
+  dim, so an anchor is never mistaken for a thing that lives here.
 - **Edges.** Drawn between visible nodes; edges of collapsed children roll up
   into an edge between their containers.
 - **Violations.** Red arrow plus the rule id, and a separate list so they can

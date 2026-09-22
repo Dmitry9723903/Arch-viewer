@@ -98,6 +98,15 @@
   /* Evidence of another kind, drawn as such: read from another tool's graph
      rather than from this repository's own metadata. */
   path.edge.borrowed { stroke-dasharray: 5 3; }
+  /* Not a box on this level — a direction out of it. Smaller, dimmer and
+     dashed, so it is never mistaken for one of the things drawn here. */
+  g.anchor rect { fill: none; stroke: var(--line); stroke-dasharray: 3 2; rx: 4; cursor: pointer; }
+  g.anchor text { font-size: 11px; fill: var(--dim);
+                  font-family: ui-monospace, Menlo, Consolas, monospace; pointer-events: none; }
+  g.anchor:hover rect { stroke: var(--accent); }
+  g.anchor:hover text { fill: var(--accent); }
+  g.anchor.incoming rect { stroke: var(--ok); opacity: .55; }
+  g.anchor.outgoing rect { stroke: var(--accent); opacity: .55; }
   path.edge.bad.faint { opacity: .5; }
   text.rule { fill: var(--bad); font-size: 10px;
               font-family: ui-monospace, Menlo, Consolas, monospace; }
@@ -216,12 +225,15 @@ function render() {
   const cols = Math.max(1, Math.min(5, Math.ceil(Math.sqrt(boxes.length))));
   const W = 200, H = 64, GX = 90, GY = 60;
   const pos = new Map();
+  const shift = (outward.out.size || outward.into.size) ? 190 : 0;
   boxes.forEach((b, i) => {
     const row = Math.floor(i / cols), col = i % cols;
-    pos.set(b.id, { x: col * (W + GX) + 20, y: row * (H + GY) + 20 });
+    pos.set(b.id, { x: col * (W + GX) + 20 + shift, y: row * (H + GY) + 20 });
   });
   const rows = Math.ceil(boxes.length / cols);
-  const width = cols * (W + GX) + 40, height = rows * (H + GY) + 40;
+  const margin = (outward.out.size || outward.into.size) ? 190 : 0;
+  const width = cols * (W + GX) + 40 + margin * 2;
+  const height = Math.max(rows * (H + GY) + 40, 24 + 6 * 30 + 20);
 
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('width', width);
@@ -236,13 +248,14 @@ function render() {
       : typeBox(b.type, current, pos.get(b.id), W, H));
   }
 
+  anchors(svg, outward, width, height);
   canvas.appendChild(svg);
 
   if (edges.length === 0 && boxes.length > 1) {
     const note = document.createElement('p');
     note.className = 'own-types';
-    note.textContent = outward.out || outward.into
-      ? `Nothing here refers to anything else here. ${outward.out} references leave this level, ${outward.into} arrive — the panel names them.`
+    note.textContent = outward.out.size || outward.into.size
+      ? `Nothing here refers to anything else here — the arrows at the edges lead to what does.`
       : 'Nothing here refers to anything else here, and nothing refers to it.';
     canvas.appendChild(note);
   }
@@ -251,20 +264,81 @@ function render() {
 }
 
 // References crossing this level's edge, counted so the reader knows whether
-// an empty canvas means "unconnected" or "connected elsewhere".
+// an empty canvas means "unconnected" or "connected elsewhere", and gathered
+// so the other end can be drawn.
 function leaving(boxes) {
   const inside = new Set();
   for (const b of boxes) {
     if (b.node) idsUnder(b.node).forEach(id => inside.add(id));
     else inside.add(b.id);
   }
-  let out = 0, into = 0;
+  const out = new Map(), into = new Map();
   for (const e of MODEL.edges) {
-    const a = inside.has(e.from), b = inside.has(e.to);
-    if (a && !b) out++;
-    else if (b && !a) into++;
+    const from = inside.has(e.from), to = inside.has(e.to);
+    if (from && !to) keep(out, e.to, e);
+    else if (to && !from) keep(into, e.from, e);
   }
   return { out, into };
+}
+
+function keep(map, id, e) {
+  if (!map.has(id)) map.set(id, { id, edges: [] });
+  map.get(id).edges.push(e);
+}
+
+// Where a node lives, so clicking an anchor can go there.
+function pathTo(id, list = MODEL.nodes, trail = []) {
+  for (const n of list) {
+    if (n.id === id) return { path: trail, box: n.id, type: null };
+    for (const t of n.types || []) {
+      if (t.id === id) return { path: trail, box: n.id, type: t.id };
+    }
+    const deeper = pathTo(id, n.children || [], [...trail, n.id]);
+    if (deeper) return deeper;
+  }
+  return null;
+}
+
+// The other end of a reference that leaves this level. Drawn small and faint
+// and never in the grid: it is not one of the things here, it is a direction.
+function anchors(svg, outward, width, height) {
+  const shown = (map, side, css) => [...map.values()]
+    .sort((a, b) => b.edges.length - a.edges.length)
+    .slice(0, 6)
+    .map((item, i) => {
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('class', 'anchor ' + css);
+      const y = 24 + i * 30;
+      const x = side === 'out' ? width - 176 : 8;
+
+      const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      r.setAttribute('x', x); r.setAttribute('y', y);
+      r.setAttribute('width', 168); r.setAttribute('height', 22);
+
+      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      label.setAttribute('x', x + 8); label.setAttribute('y', y + 15);
+      label.textContent = (side === 'out' ? '→ ' : '← ') + trim(short(item.id), 18)
+        + (item.edges.length > 1 ? ` ×${item.edges.length}` : '');
+
+      const tip = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+      tip.textContent = item.id + (side === 'out' ? ' — referenced from here' : ' — refers to something here');
+      g.append(r, label, tip);
+
+      g.addEventListener('click', ev => {
+        ev.stopPropagation();
+        const where = pathTo(item.id);
+        if (!where) return;
+        state.path = where.path;
+        state.selected = where.box;
+        state.openType = where.type;
+        render();
+        restore();
+      });
+      return g;
+    });
+
+  for (const g of shown(outward.into, 'in', 'incoming')) svg.appendChild(g);
+  for (const g of shown(outward.out, 'out', 'outgoing')) svg.appendChild(g);
 }
 
 // One box for one type, dashed to tell it from a container.
