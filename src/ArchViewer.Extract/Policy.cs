@@ -62,11 +62,17 @@ public sealed class Policy
                    ?? throw new InvalidOperationException($"Policy file is empty: {beside}");
         }
 
-        // No policy: one level of grouping by the directory the project sits in.
+        // No policy: group by the top directory of the repository — src,
+        // test, and whatever else it keeps at its root.
+        //
+        // Index 1 was wrong and looked almost right: the second segment is
+        // the project's own folder, so every project became a container of
+        // exactly itself. A grouping that groups nothing is worse than none,
+        // because it looks like an answer.
         return new Policy
         {
             Title = new DirectoryInfo(root).Name,
-            Group = new[] { new GroupRule { Kind = "folder", From = "path-segment", Index = 1 } },
+            Group = new[] { new GroupRule { Kind = "folder", From = "path-segment", Index = 0 } },
         };
     }
 }
