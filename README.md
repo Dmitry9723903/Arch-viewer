@@ -1,7 +1,8 @@
 # arch-viewer
 
-Look at the structure of a repository instead of reading its code — C#,
-Python, TypeScript, JavaScript and PHP, on one map, from one command.
+Look at the structure of a repository instead of reading its code — C#, C,
+C++, Python, TypeScript, JavaScript, PHP and SQL, on one map, from one
+command.
 
 `arch-viewer` reads a repository and draws it as a graph you can drill into:
 container → nested container → type → member → source. Dependencies that
@@ -9,7 +10,7 @@ break your own rules are drawn in red, labelled with the rule they break.
 
 ![A module with a type open, showing its source](docs/screenshot.png)
 
-**Status: early but working.** Five languages are read, by four extractors
+**Status: early but working.** Eight languages are read, by six extractors
 that share one model file and one viewer. Types, members and jump-to-source
 work; for C# the repository has to have been built. Not yet done: measured
 metrics and what-if proposals. See [docs/spec.md](docs/spec.md).
@@ -136,13 +137,20 @@ language's own parser.
 | Ecosystem | Reads | How | Needs |
 |---|---|---|---|
 | .NET — C# | projects, namespaces, types, members, wiring in a composition root | compiled assemblies and their PDBs, through `MetadataLoadContext` | .NET SDK 10; the repository must build |
+| C, C++ | Visual C++ projects, types, base classes, `#include` between modules | project files for the structure; clang where installed, this tool's own C++ tokeniser otherwise | Python 3.10+; nothing must be built |
 | Python | packages, modules, classes, module-level functions | the `ast` module of the language itself | Python 3.10+ |
 | TypeScript, JavaScript | folders, modules, classes, interfaces, enums | the TypeScript compiler **of the repository being read** | Node.js 18+, and `npm install` in that repository |
 | PHP | namespaces, classes, interfaces, traits, enums | `nikic/PHP-Parser` when composer has installed it, the language's own tokeniser otherwise | PHP 8.0+ |
+| SQL | tables, views, procedures, functions, triggers, and what each one names | its own tokeniser; comments and string literals are not code | Python 3.10+ |
 
-Nothing else is read. C, C++, Java, Go and Rust are counted and named as
+Nothing else is read. Java, Go, Rust and Delphi are counted and named as
 unread rather than passed over in silence — the command tells you how many
 files of them it found and left alone.
+
+**The rules are checked the same way for all of them.** A policy is applied
+by one implementation, to whatever model an extractor produced. Until that
+was true only C# repositories were ever marked, which does not mean the
+others kept their rules — it means nobody looked.
 
 **One repository, one map, one command.** `archview all` finds which of these
 ecosystems a repository actually holds, runs the extractors that apply and
@@ -176,12 +184,18 @@ never guessed at.
 | For | Version | Linux (Debian/Ubuntu) | Windows |
 |---|---|---|---|
 | the tool, and reading C# | .NET SDK **10** | `sudo apt install dotnet-sdk-10.0` | [dotnet.microsoft.com/download](https://dotnet.microsoft.com/download) |
-| reading Python | Python **3.10+** | usually present; `sudo apt install python3` | [python.org](https://python.org) — tick *Add to PATH* |
+| reading Python, C, C++ or SQL | Python **3.10+** | usually present; `sudo apt install python3` | [python.org](https://python.org) — tick *Add to PATH* |
 | reading TypeScript, JavaScript | Node.js **18+** | `sudo apt install nodejs` | [nodejs.org](https://nodejs.org) |
 | reading PHP | PHP **8.0+** | `sudo apt install php-cli composer` | [windows.php.net](https://windows.php.net/download) |
 
 Check what you have: `dotnet --list-sdks` must show a 10.x line; `python3
 --version` (`python --version` on Windows), `node --version`, `php --version`.
+
+`clang` is optional for C and C++. Installed — `pip install clang` with
+libclang present — its Python bindings are used and the run says so;
+otherwise this tool reads the source with its own C++ tokeniser. The
+structure of a C++ repository does not depend on either: it is read from the
+Visual C++ project files and from `#include`, which state it exactly.
 
 `composer` is optional even for PHP. With it, the PHP extractor uses
 `nikic/PHP-Parser`; without it, the language's own tokeniser. Both read the

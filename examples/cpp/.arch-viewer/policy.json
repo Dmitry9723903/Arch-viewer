@@ -1,0 +1,38 @@
+{
+  "title": "Example C++",
+  "group": [
+    {
+      "kind": "folder",
+      "from": "path-segment",
+      "index": 0
+    }
+  ],
+  "rules": [
+    {
+      "id": "domain-knows-only-the-kernel",
+      "subject": {
+        "role": "domain"
+      },
+      "mayReference": [
+        {
+          "role": "kernel"
+        }
+      ]
+    },
+    {
+      "id": "adapters-serve-their-own-module",
+      "subject": {
+        "role": "adapters"
+      },
+      "mayReference": [
+        {
+          "role": "domain",
+          "same": "folder"
+        },
+        {
+          "role": "kernel"
+        }
+      ]
+    }
+  ]
+}

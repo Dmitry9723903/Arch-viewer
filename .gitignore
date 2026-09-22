@@ -12,3 +12,7 @@ obj/
 *.arch.json
 examples/example.html
 examples/example.json
+
+# Python bytecode, produced by running the extractors
+__pycache__/
+*.pyc

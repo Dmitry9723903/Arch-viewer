@@ -60,13 +60,19 @@ public sealed class TypeNode
     public required string Name { get; init; }
 
     /// <summary>class, interface, record, enum, struct or abstract.</summary>
-    public required string Stereotype { get; init; }
+    public string? Stereotype { get; init; }
 
     /// <summary>
-    /// public, internal, protected or private. A map of structure shows what
-    /// is there; visibility is a property of a type, not a reason to hide it.
+    /// public, internal, protected or private, where the language has the
+    /// notion and the extractor read it. A map of structure shows what is
+    /// there; visibility is a property of a type, not a reason to hide it.
+    /// <para>
+    /// Absent rather than assumed where it was not read. C++ gives a type no
+    /// visibility of its own, and writing "public" for one would put on the
+    /// screen a fact nobody measured.
+    /// </para>
     /// </summary>
-    public required string Visibility { get; init; }
+    public string? Visibility { get; init; }
 
     /// <summary>Source file, relative to the root, when a PDB supplied one.</summary>
     public string? File { get; init; }

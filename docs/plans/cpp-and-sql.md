@@ -65,19 +65,26 @@ is the only place that names a concrete adapter.
 
 ## The checks
 
-A milestone is complete when these pass.
+A milestone is complete when these pass. Marked as they stand.
 
-1. `examples/cpp` — a small invented solution, two modules, one deliberate
-   include that crosses a boundary the policy forbids. Read it: the crossing
-   is drawn red and named. This mirrors `examples/solution` exactly.
-2. The same example read **without** clang installed gives the same modules,
-   the same edges, and the same count of declarations. The two readers are
-   compared, and a difference is a defect in one of them.
-3. The legacy repository of 1,879 C/C++ files is read without crashing, and
-   the run states how many declarations each reader found and how many files
-   it could not read.
-4. The viewer is **not modified by one line**. If it must be, the model is
-   missing a field.
+1. **Passes.** `examples/cpp` — four modules in three folders, one
+   deliberate include that crosses a boundary the policy forbids. Read by
+   one command: 7 types, 4 references between modules, and exactly one
+   crossing, drawn red and named `adapters-serve-their-own-module`.
+2. **Not run.** The two readers compared on one example. clang is not
+   installed on the machine this was written on, and installing a compiler
+   front-end is a decision to take deliberately rather than in passing. The
+   clang reader is written and is not claimed to have been verified.
+3. **Passes.** A legacy repository of 1,885 C/C++ files: 52 modules from 37
+   Visual C++ projects, 5,054 declarations, 61 references between modules,
+   in 53 seconds. It states what it did not read: 642 of 5,222 includes name
+   a file outside the repository, 73,140 preprocessor lines were passed
+   over, 608 source files belong to no project, and 94 files are named in a
+   project in a different case than the disk uses.
+4. **Passes.** The viewer was not modified by one line. One field of the
+   model changed: a type's `visibility` became optional, because C++ gives a
+   type none and writing "public" would have put on the screen a fact nobody
+   measured.
 
 ## Order of work
 
@@ -88,3 +95,23 @@ A milestone is complete when these pass.
 5. The clang reader — the same declarations, with members and base classes.
 6. SQL, which is its own small extractor and shares none of the above.
 7. Registration in the one command, and the README.
+
+## What was learned on the way, and is now written in the code
+
+**A repository written on Windows names its own files without regard to
+case.** A project lists `StdAfx.h`, an include asks for `stdafx.h`, and to
+that compiler they are one file. Read on a system where they are two, 320
+files would not open and a third of the includes pointed at nothing —
+quietly, which is the part that matters.
+
+**Skipping ahead to the next brace is not parsing.** `struct soap *soap` in
+a parameter list looks like a class head to a reader willing to ignore the
+`*`, and the brace it reaches is the function's body. That cost nine
+thousand phantom types, named after whatever identifier stood last before
+the body: `type`, `a`, `n`. Only what a class head may hold is now allowed
+between the keyword and the brace.
+
+**An invariant in the domain found a real defect before any map was drawn.**
+Two projects of one name — a `Test` beside every library — were refused by
+the repository rather than silently merged. The name is the author's; the
+identity gained the directory that tells them apart.

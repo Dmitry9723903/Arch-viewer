@@ -52,6 +52,24 @@ Three properties it must keep:
 - **It is not the only way in.** Each extractor stays runnable alone, which is
   what keeps this part from accumulating language knowledge.
 
+### The rules have one implementation, and it is not in an extractor
+
+`archview judge <model.json> --policy <file>` applies a policy to a model
+whatever produced it, marks every reference that breaks a rule, and writes
+the page. `archview all` does it for each part it reads.
+
+The alternative was a policy reader in each extractor, in four languages:
+the same knowledge written four times, and on the day they disagree the
+answer depends on which language a module happens to be written in.
+
+Until this existed only the .NET extractor applied a policy, so a Python,
+PHP, TypeScript or C++ repository was drawn with nothing marked. That did
+not mean those repositories kept their rules. It meant nobody checked, and
+the map said so in the only way a map can — by showing nothing.
+
+A verdict is recomputed from the policy on every run and never read back
+from the model file. A stale verdict is worse than none: it is trusted.
+
 ### Which copy of an assembly wins, and why it is not a preference
 
 The .NET extractor resolves names against every assembly it can find: the

@@ -18,12 +18,24 @@ public static class Program
             Console.WriteLine("usage: archview <repository> [--policy <file>] [--out <file.html>] [--no-types]");
             Console.WriteLine("       archview all <repository> [--out <file.html>] [--title <name>] [--policy <file>] [--no-build] [--no-source]");
             Console.WriteLine("       archview merge <model.json> … [--out <file.html>] [--title <name>]");
+            Console.WriteLine("       archview judge <model.json> [--policy <file>] [--out <file.html>]");
             return args.Length == 0 ? 1 : 0;
         }
 
         if (args[0] == "merge")
         {
             return Joined(args);
+        }
+
+        if (args[0] == "judge")
+        {
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine("judge needs a model file to judge.");
+                return 1;
+            }
+
+            return Judge.Apply(args[1], Option(args, "--policy"), Option(args, "--out"));
         }
 
         if (args[0] == "all")
@@ -296,6 +308,7 @@ public static class Program
         ("JavaScript", "*.js"),
         ("C++", "*.cpp"),
         ("C", "*.c"),
+        ("SQL", "*.sql"),
         ("Java", "*.java"),
         ("Go", "*.go"),
         ("Rust", "*.rs"),
@@ -380,7 +393,7 @@ public static class Program
         return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
     }
 
-    private static string Page(string json)
+    internal static string Page(string json)
     {
         var assembly = Assembly.GetExecutingAssembly();
         var resource = assembly.GetManifestResourceNames()

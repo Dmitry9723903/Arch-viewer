@@ -48,6 +48,11 @@ internal static class Everything
             return 1;
         }
 
+        // A policy is the architecture's rules, and an architecture does not
+        // belong to a language. Found once here and applied to every part.
+        var beside = Path.Combine(root, ".arch-viewer", "policy.json");
+        var rules = policy ?? (File.Exists(beside) ? beside : null);
+
         var work = Directory.CreateTempSubdirectory("archview");
         var models = new List<string>();
         var skipped = new List<string>();
@@ -85,8 +90,18 @@ internal static class Everything
 
                 if (others.Count > 0)
                 {
+                    var covered = others.Select(part => part.Name).ToList();
+
+                    // One extractor reads both languages, and the report
+                    // names them separately. Without this, a repository of C
+                    // is announced as unread and then read a moment later.
+                    if (covered.Contains("C++"))
+                    {
+                        covered.Add("C");
+                    }
+
                     arguments.Add("--covered");
-                    arguments.Add(string.Join(',', others.Select(part => part.Name)));
+                    arguments.Add(string.Join(',', covered));
                 }
 
                 if (policy is not null)
@@ -147,6 +162,14 @@ internal static class Everything
 
                 if (code == 0 && File.Exists(model))
                 {
+                    // The .NET extractor applies a policy while it builds;
+                    // every other one produces structure and leaves the
+                    // judging to the one implementation of the rules.
+                    if (rules is not null)
+                    {
+                        Program.Main(new[] { "judge", model, "--policy", rules, "--out", page });
+                    }
+
                     models.Add(model);
                 }
                 else
@@ -310,6 +333,25 @@ internal static class Everything
                 "PHP",
                 Path.Combine(home, "extractors", "php", "archview-php.php"),
                 new[] { "php" },
+                root));
+        }
+
+        if (new[] { "*.c", "*.cpp", "*.cc", "*.cxx", "*.h", "*.hpp", "*.hxx" }
+            .Any(pattern => Holds(root, pattern)))
+        {
+            parts.Add(new Part(
+                "C++",
+                Path.Combine(home, "extractors", "cpp", "archview_cpp.py"),
+                new[] { "python3", "python" },
+                root));
+        }
+
+        if (Holds(root, "*.sql"))
+        {
+            parts.Add(new Part(
+                "SQL",
+                Path.Combine(home, "extractors", "sql", "archview_sql.py"),
+                new[] { "python3", "python" },
                 root));
         }
 
