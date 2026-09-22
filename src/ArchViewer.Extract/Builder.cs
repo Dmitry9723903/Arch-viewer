@@ -41,7 +41,7 @@ public static class Builder
                 parentList = node.Children;
             }
 
-            var declared = facts.Types(placement.Project.Name);
+            var declared = Authored(facts.Types(placement.Project.Name), policy);
 
             var leaf = new MutableNode(placement.Project.Name, placement.Project.Name, "project")
             {
@@ -149,6 +149,39 @@ public static class Builder
         }
 
         return edges;
+    }
+
+    /// <summary>
+    /// Types somebody wrote. A type the compiler made for an iterator or a
+    /// collection has no declaration anywhere in the repository, and a type
+    /// generated into the build's own scratch folder was never in it either.
+    /// Both are real in the assembly and meaningless on a map of what was
+    /// designed.
+    /// </summary>
+    private static IReadOnlyList<TypeNode> Authored(
+        IReadOnlyList<TypeNode> types,
+        Policy policy)
+    {
+        var kept = new List<TypeNode>();
+
+        foreach (var type in types)
+        {
+            if (type.File is null)
+            {
+                continue;
+            }
+
+            var segments = type.File.Split('/');
+
+            if (segments.Any(segment => policy.Exclude.Contains(segment, StringComparer.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            kept.Add(type);
+        }
+
+        return kept;
     }
 
     /// <summary>

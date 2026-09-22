@@ -156,9 +156,12 @@ function countTypes(node) {
 }
 
 // Edges between the boxes currently on screen, with violations preserved.
-function visibleEdges(nodes) {
+function visibleEdges(boxes) {
   const owner = new Map();
-  nodes.forEach(n => idsUnder(n).forEach(leaf => owner.set(leaf, n.id)));
+  for (const b of boxes) {
+    if (b.node) idsUnder(b.node).forEach(id => owner.set(id, b.id));
+    else owner.set(b.id, b.id);
+  }
   const seen = new Map();
   for (const e of MODEL.edges) {
     const a = owner.get(e.from), b = owner.get(e.to);
@@ -182,31 +185,31 @@ function render() {
   const canvas = document.getElementById('canvas');
   canvas.innerHTML = '';
 
-  // A container with no children but plenty of types used to show an empty
-  // canvas while the types sat in a list on the side. The types are what it
-  // holds, so they are what it draws.
-  if (nodes.length === 0) {
-    const types = (current && current.types) || [];
-    if (types.length) {
-      drawTypes(canvas, current, types);
-      if (!state.selected) select(current);
-      return;
-    }
+  // Containers and the types declared here are drawn together, in one
+  // system of boxes with one set of arrows. Drawn in two passes they had no
+  // lines between them, and a type referring to a neighbouring namespace —
+  // which is most of what a domain does — looked unconnected.
+  const own = (current && current.types) || [];
+  const boxes = [
+    ...nodes.map(n => ({ id: n.id, node: n, type: null })),
+    ...own.map(t => ({ id: t.id, node: null, type: t })),
+  ];
+
+  if (boxes.length === 0) {
     canvas.innerHTML = '<p class="empty">Nothing here.</p>';
     if (current) select(current);
     return;
   }
 
-  const edges = visibleEdges(nodes);
-  const own = (current && current.types) || [];
-  const cols = Math.max(1, Math.min(4, Math.ceil(Math.sqrt(nodes.length))));
+  const edges = visibleEdges(boxes);
+  const cols = Math.max(1, Math.min(5, Math.ceil(Math.sqrt(boxes.length))));
   const W = 200, H = 64, GX = 90, GY = 60;
   const pos = new Map();
-  nodes.forEach((n, i) => {
+  boxes.forEach((b, i) => {
     const row = Math.floor(i / cols), col = i % cols;
-    pos.set(n.id, { x: col * (W + GX) + 20, y: row * (H + GY) + 20 });
+    pos.set(b.id, { x: col * (W + GX) + 20, y: row * (H + GY) + 20 });
   });
-  const rows = Math.ceil(nodes.length / cols);
+  const rows = Math.ceil(boxes.length / cols);
   const width = cols * (W + GX) + 40, height = rows * (H + GY) + 40;
 
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -216,85 +219,48 @@ function render() {
   svg.innerHTML = markers();
 
   for (const e of edges) svg.appendChild(edgePath(pos, e, W, H));
-  for (const n of nodes) svg.appendChild(nodeBox(n, pos.get(n.id), W, H));
+  for (const b of boxes) {
+    svg.appendChild(b.node
+      ? nodeBox(b.node, pos.get(b.id), W, H)
+      : typeBox(b.type, current, pos.get(b.id), W, H));
+  }
 
   canvas.appendChild(svg);
 
-  // Types declared here rather than in a nested container are held by this
-  // box too, and were previously visible only in the list at the side.
-  if (own.length) {
-    const heading = document.createElement('p');
-    heading.className = 'own-types';
-    heading.textContent = `${own.length} type${own.length > 1 ? 's' : ''} declared here`;
-    canvas.appendChild(heading);
-    drawTypes(canvas, current, own);
-  }
+  if (!state.selected && current) select(current);
 }
 
-// Types drawn as boxes. No edges between them: the model carries references
-// between containers, not between types, and drawing lines that stand for
-// nothing measured would be decoration.
-function drawTypes(canvas, owner, types) {
-  const W = 190, H = 52, GX = 60, GY = 54;
-  const cols = Math.max(1, Math.min(6, Math.floor((canvas.clientWidth - 40) / (W + GX)) || 4));
-  const rows = Math.ceil(types.length / cols);
-  const width = cols * (W + GX) + 40, height = rows * (H + GY) + 40;
+// One box for one type, dashed to tell it from a container.
+function typeBox(t, owner, at, W, H) {
+  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  g.setAttribute('class', 'node type-node' + (state.openType === t.id ? ' sel' : ''));
 
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('width', width);
-  svg.setAttribute('height', height);
-  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-  svg.innerHTML = markers();
+  const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  r.setAttribute('x', at.x); r.setAttribute('y', at.y);
+  r.setAttribute('width', W); r.setAttribute('height', H);
 
-  // References between the types drawn here. The model carries them — what a
-  // type inherits, implements and holds — and a reader who has drilled this
-  // far is asking precisely what these boxes have to do with each other. A
-  // type answering that question with an empty canvas answers nothing.
-  const pos = new Map();
-  types.forEach((t, i) => pos.set(t.id, {
-    x: (i % cols) * (W + GX) + 20,
-    y: Math.floor(i / cols) * (H + GY) + 20,
-  }));
+  const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  label.setAttribute('x', at.x + 14); label.setAttribute('y', at.y + 26);
+  label.textContent = trim(t.name, 24);
 
-  for (const e of MODEL.edges) {
-    if (pos.has(e.from) && pos.has(e.to) && e.from !== e.to) {
-      svg.appendChild(edgePath(pos, e, W, H, state.openType));
-    }
-  }
+  const sub = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  sub.setAttribute('class', 'sub');
+  sub.setAttribute('x', at.x + 14); sub.setAttribute('y', at.y + 46);
+  sub.textContent = [
+    t.visibility && t.visibility !== 'public' ? t.visibility : null,
+    t.stereotype,
+    (t.members || []).length ? (t.members.length + ' members') : null,
+  ].filter(Boolean).join(' · ');
 
-  types.forEach((t, i) => {
-    const { x, y } = pos.get(t.id);
-    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    g.setAttribute('class', 'node type-node' + (state.openType === t.id ? ' sel' : ''));
-
-    const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    r.setAttribute('x', x); r.setAttribute('y', y);
-    r.setAttribute('width', W); r.setAttribute('height', H);
-
-    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    label.setAttribute('x', x + 12); label.setAttribute('y', y + 22);
-    label.textContent = trim(t.name, 22);
-
-    const sub = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    sub.setAttribute('class', 'sub');
-    sub.setAttribute('x', x + 12); sub.setAttribute('y', y + 40);
-    sub.textContent = [
-      t.visibility && t.visibility !== 'public' ? t.visibility : null,
-      t.stereotype,
-      (t.members || []).length ? (t.members.length + ' members') : null,
-    ].filter(Boolean).join(' · ');
-
-    g.append(r, label, sub);
-    g.addEventListener('click', ev => {
-      ev.stopPropagation();
-      state.openType = state.openType === t.id ? null : t.id;
-      render();
-      select(owner);
-    });
-    svg.appendChild(g);
+  g.append(r, label, sub);
+  g.addEventListener('click', ev => {
+    ev.stopPropagation();
+    state.openType = state.openType === t.id ? null : t.id;
+    state.selected = t.id;
+    render();
+    select(owner);
   });
-
-  canvas.appendChild(svg);
+  return g;
 }
 
 function markers() {

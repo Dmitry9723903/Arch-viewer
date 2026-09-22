@@ -15,8 +15,24 @@ namespace ArchViewer.Extract;
 /// </summary>
 internal sealed class SourceText
 {
+    // Three shapes the first version missed, all of them ordinary C#.
+    // "record struct Money" puts a second keyword before the name, and
+    // matching only the first left the name as "struct": fifty-two value
+    // types of one repository lost their text that way.
+    // "delegate Task Execute(...)" puts a return type there instead, and was
+    // not matched at all.
+    // The name is therefore whatever identifier stands last before the thing
+    // that opens the declaration — a brace, a parameter list, a base list or,
+    // for a delegate, the semicolon.
     private static readonly Regex Declares = new(
-        @"\b(class|record|struct|interface|enum)\s+([A-Za-z_][A-Za-z0-9_]*)",
+        @"\b(class|record|struct|interface|enum)(?:\s+(?:struct|class))?\s+([A-Za-z_][A-Za-z0-9_]*)",
+        RegexOptions.Compiled);
+
+    // A delegate names its return type before its own name, so the type
+    // keywords above cannot find it: "public delegate Task Execute(...)".
+    // The name is the identifier immediately before the parameter list.
+    private static readonly Regex DeclaresDelegate = new(
+        @"\bdelegate\s+.+?\s+([A-Za-z_][A-Za-z0-9_]*)\s*[(<]",
         RegexOptions.Compiled);
 
     private static readonly Regex Namespaces = new(
@@ -167,16 +183,19 @@ internal sealed class SourceText
             }
 
             var declaration = Declares.Match(line);
-
-            if (!declaration.Success)
-            {
-                continue;
-            }
+            var name = declaration.Success
+                ? declaration.Groups[2].Value
+                : DeclaresDelegate.Match(line) is { Success: true } asDelegate
+                    ? asDelegate.Groups[1].Value
+                    : null;
 
             // "new class" is not a declaration, and neither is a mention
             // inside a string; requiring the keyword to open a word of the
             // line's code is as far as text goes without a parser.
-            var name = declaration.Groups[2].Value;
+            if (name is null)
+            {
+                continue;
+            }
             var found = new Declaration(relative, i);
 
             Add(_byName, name, found);
