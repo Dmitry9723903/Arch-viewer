@@ -165,7 +165,8 @@ public static class Program
         Console.WriteLine($"types      {types}");
         Console.WriteLine(references == violations
             ? $"edges      {model.Edges.Count}, {violations} crossing a boundary"
-            : $"edges      {model.Edges.Count}, {violations} crossings ({references} references)");
+            : $"edges      {model.Edges.Count}, {violations} "
+              + $"crossing{(violations == 1 ? "" : "s")} ({references} references)");
         Console.WriteLine($"written    {outPath}");
 
         if (facts.PassedOver > 0)

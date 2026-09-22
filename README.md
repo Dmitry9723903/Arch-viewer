@@ -1,6 +1,7 @@
 # arch-viewer
 
-Look at the structure of a .NET solution instead of reading its code.
+Look at the structure of a repository instead of reading its code — C#,
+Python, TypeScript, JavaScript and PHP, on one map, from one command.
 
 `arch-viewer` reads a repository and draws it as a graph you can drill into:
 container → nested container → type → member → source. Dependencies that
@@ -8,10 +9,14 @@ break your own rules are drawn in red, labelled with the rule they break.
 
 ![A module with a type open, showing its source](docs/screenshot.png)
 
-**Status: early but working.** The extractor and the viewer run. Types,
-members and jump-to-source work when the repository has been built. Not yet
-done: measured metrics, what-if proposals, extractors for other ecosystems.
-See [docs/spec.md](docs/spec.md).
+**Status: early but working.** Five languages are read, by four extractors
+that share one model file and one viewer. Types, members and jump-to-source
+work; for C# the repository has to have been built. Not yet done: measured
+metrics and what-if proposals. See [docs/spec.md](docs/spec.md).
+
+Straight to it: [what you need](#what-you-need) ·
+[Linux](#running-it-on-linux-or-macos) ·
+[Windows](#running-it-on-windows-powershell)
 
 ---
 
@@ -128,32 +133,24 @@ arrows between whatever the model names. An ecosystem is supported by writing
 an extractor that emits the same model file, in that language and with that
 language's own parser.
 
-| Ecosystem | Extractor | Dependencies |
-|---|---|---|
-| .NET | `src/ArchViewer.Extract` | one, from Microsoft |
-| Python | `extractors/python` | none — `ast` ships with the language |
-| TypeScript, JavaScript | `extractors/typescript` | none — the target repository's own compiler is used |
-| PHP | `extractors/php` | none required; uses `nikic/PHP-Parser` when it is there |
+| Ecosystem | Reads | How | Needs |
+|---|---|---|---|
+| .NET — C# | projects, namespaces, types, members, wiring in a composition root | compiled assemblies and their PDBs, through `MetadataLoadContext` | .NET SDK 10; the repository must build |
+| Python | packages, modules, classes, module-level functions | the `ast` module of the language itself | Python 3.10+ |
+| TypeScript, JavaScript | folders, modules, classes, interfaces, enums | the TypeScript compiler **of the repository being read** | Node.js 18+, and `npm install` in that repository |
+| PHP | namespaces, classes, interfaces, traits, enums | `nikic/PHP-Parser` when composer has installed it, the language's own tokeniser otherwise | PHP 8.0+ |
 
-**One repository, one map, one command.** `all` finds which of these
-ecosystems a repository actually holds, builds its .NET code, runs the
-extractors that apply, and joins the results into a single page:
+Nothing else is read. C, C++, Java, Go and Rust are counted and named as
+unread rather than passed over in silence — the command tells you how many
+files of them it found and left alone.
 
-```bash
-archview all <repository> --out arch.html
-```
+**One repository, one map, one command.** `archview all` finds which of these
+ecosystems a repository actually holds, runs the extractors that apply and
+joins the results into a single page — see
+[running it](#running-it-on-linux-or-macos) below.
 
-An ecosystem whose runtime is missing is named with the reason and left out;
-it is never silently dropped, and neither is one whose extractor crashes —
-each pass runs in its own process, so a fault in one still leaves a map of the
-rest.
-
-`--no-build` skips building the .NET part. `--no-source` drops the source text
-and keeps the structure and line numbers, for a repository large enough that
-the page would not open; the command weighs the finished page and says so.
-
-The extractors are also usable one at a time, which is what `all` does for
-you:
+Each extractor also runs on its own, which is what keeps the languages from
+leaking into each other:
 
 ```bash
 python3 extractors/python/archview_python.py <repository> --out arch.html
@@ -170,31 +167,107 @@ and written down.
 Proven on a Django repository of 442 modules and 425 classes: **the viewer was
 not changed by a single line** to draw it.
 
-## Running it
+## What you need
 
-On Windows, see [docs/WINDOWS.md](docs/WINDOWS.md).
+The tool itself is .NET; each extractor needs its own language present. You
+need only the ones you intend to read — a missing one is named and skipped,
+never guessed at.
+
+| For | Version | Linux (Debian/Ubuntu) | Windows |
+|---|---|---|---|
+| the tool, and reading C# | .NET SDK **10** | `sudo apt install dotnet-sdk-10.0` | [dotnet.microsoft.com/download](https://dotnet.microsoft.com/download) |
+| reading Python | Python **3.10+** | usually present; `sudo apt install python3` | [python.org](https://python.org) — tick *Add to PATH* |
+| reading TypeScript, JavaScript | Node.js **18+** | `sudo apt install nodejs` | [nodejs.org](https://nodejs.org) |
+| reading PHP | PHP **8.0+** | `sudo apt install php-cli composer` | [windows.php.net](https://windows.php.net/download) |
+
+Check what you have: `dotnet --list-sdks` must show a 10.x line; `python3
+--version` (`python --version` on Windows), `node --version`, `php --version`.
+
+`composer` is optional even for PHP. With it, the PHP extractor uses
+`nikic/PHP-Parser`; without it, the language's own tokeniser. Both read the
+same things, and on one legacy repository the tokeniser read *more*, because
+the parser refuses pre-PHP-8 syntax that the tokeniser does not mind.
+
+## Running it on Linux or macOS
+
+Once, to get the tool:
 
 ```bash
-dotnet build src/ArchViewer.Extract/ArchViewer.Extract.csproj
-dotnet src/ArchViewer.Extract/bin/Debug/net10.0/archview.dll all <repository> --out arch.html
+git clone https://github.com/Dmitry9723903/Arch-viewer.git
+cd Arch-viewer
+dotnet build src/ArchViewer.Extract
 ```
 
-That one command reads everything in the repository it can read. Drop the
-`all` to read only its .NET projects, without building them.
+Then, for any repository — one command:
 
-Open `arch.html`. It is one self-contained file with the model embedded, so
-it works from disk with no server.
+```bash
+dotnet src/ArchViewer.Extract/bin/Debug/net10.0/archview.dll all ~/code/my-repo --out arch.html
+```
 
-A repository that has been built gives types, members and source lines. One
-that has not still gives the graph — grouping falls back to directory and
-project names, and the page says types are missing rather than pretending
-there are none.
+Open `arch.html` in a browser. It is one self-contained file with the model
+embedded, so it works from disk with no server.
+
+## Running it on Windows (PowerShell)
+
+Once:
+
+```powershell
+git clone https://github.com/Dmitry9723903/Arch-viewer.git
+cd Arch-viewer
+dotnet build src\ArchViewer.Extract
+```
+
+Then, for any repository:
+
+```powershell
+dotnet src\ArchViewer.Extract\bin\Debug\net10.0\archview.dll all C:\code\my-repo --out arch.html
+```
+
+Open `arch.html` **in a browser, not in an editor** — it is a web page, and an
+editor shows you its source. More, including what to do when something looks
+wrong, in [docs/WINDOWS.md](docs/WINDOWS.md).
+
+## What that one command does
+
+1. Looks through the repository for the ecosystems above.
+2. Builds its .NET code, because types, members and jump-to-source come from
+   compiled assemblies and their PDBs. `--no-build` skips this.
+3. Runs each applicable extractor in **its own process**, so a crash in one
+   still leaves a map of the rest.
+4. Joins the models into a single page, then weighs it and says so if it came
+   out large enough that a browser may refuse it.
+
+It prints a section per language, and names every part it did not read with
+the reason: an interpreter that is not installed, an extractor that failed, a
+language nothing here can read.
+
+Useful flags:
+
+| Flag | Does |
+|---|---|
+| `--title "name"` | what the whole is called on screen |
+| `--policy <file>` | the architecture's rules; see below |
+| `--no-build` | do not build the .NET code — read what is already there |
+| `--no-source` | leave the source text out, keep structure and line numbers |
+
+`--no-source` is for large repositories: 3,500 types came to 24 MB with the
+text and 8 MB without it, and the same structure either way.
+
+## Policy, or none
 
 Put a policy at `<repository>/.arch-viewer/policy.json`, or pass `--policy`.
-With no policy at all, projects are grouped by their top-level directory and
-types by their namespace, with the references between them.
+It declares the grouping and the dependencies you forbid, and it is the file
+to hand to an agent.
 
-Try it on the bundled example:
+With no policy at all, projects are grouped by their top-level directory and
+types by their namespace, with the references between them — a map of what is
+there, with nothing marked illegal because nothing was declared illegal.
+
+A repository that has been built gives types, members and source lines. One
+that has not still gives the graph, and the page says types are missing
+rather than pretending there are none.
+
+## Try it on the bundled example
 
 ```bash
 dotnet src/ArchViewer.Extract/bin/Debug/net10.0/archview.dll all examples/solution --out example.html
@@ -210,6 +283,12 @@ broken, and counted as one:
 
 The panel names the rule that was broken, not merely that something was. A red
 arrow you cannot act on is decoration.
+
+There is a PHP example too, at `examples/php`:
+
+```bash
+php extractors/php/archview-php.php examples/php --out php-example.html
+```
 
 ## Using it with an agent
 
