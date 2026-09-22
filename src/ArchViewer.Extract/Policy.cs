@@ -46,20 +46,30 @@ public sealed class Policy
 
     /// <summary>
     /// Reads a policy file, or returns a default that groups by directory.
+    /// <para>
+    /// A policy named on the command line must exist. Falling back to the
+    /// default because the path was mistyped is the worst of the three
+    /// outcomes: the run succeeds, the map is drawn, and not one rule of the
+    /// architecture was ever applied.
+    /// </para>
     /// </summary>
     public static Policy Load(string? path, string root)
     {
-        if (path is not null && File.Exists(path))
+        if (path is not null)
         {
-            return JsonSerializer.Deserialize<Policy>(File.ReadAllText(path), ModelJson.Options)
-                   ?? throw new InvalidOperationException($"Policy file is empty: {path}");
+            if (!File.Exists(path))
+            {
+                throw new PolicyException($"No policy file at {path}");
+            }
+
+            return Read(path);
         }
 
         var beside = Path.Combine(root, ".arch-viewer", "policy.json");
+
         if (File.Exists(beside))
         {
-            return JsonSerializer.Deserialize<Policy>(File.ReadAllText(beside), ModelJson.Options)
-                   ?? throw new InvalidOperationException($"Policy file is empty: {beside}");
+            return Read(beside);
         }
 
         // No policy: group by the top directory of the repository — src,
@@ -84,6 +94,43 @@ public sealed class Policy
             Group = new[] { new GroupRule { Kind = "folder", From = "path-segment", Index = 0 } },
             Types = new TypeGrouping { By = "namespace", Edges = true },
         };
+    }
+
+    /// <summary>
+    /// Reads and parses one policy file, naming the file and the place in it
+    /// when it cannot be read. A policy is hand-written, so a typo in it is
+    /// the expected failure, not an exceptional one.
+    /// </summary>
+    private static Policy Read(string path)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<Policy>(File.ReadAllText(path), ModelJson.Options)
+                   ?? throw new PolicyException($"Policy file is empty: {path}");
+        }
+        catch (JsonException e)
+        {
+            throw new PolicyException($"Policy file {path} is not valid JSON: {e.Message}");
+        }
+        catch (IOException e)
+        {
+            throw new PolicyException($"Policy file {path} could not be read: {e.Message}");
+        }
+    }
+}
+
+/// <summary>
+/// A policy that cannot be used, with the reason stated for its author.
+/// </summary>
+public sealed class PolicyException : Exception
+{
+    /// <summary>
+    /// Creates the exception.
+    /// </summary>
+    /// <param name="message">What is wrong with the policy.</param>
+    public PolicyException(string message)
+        : base(message)
+    {
     }
 }
 

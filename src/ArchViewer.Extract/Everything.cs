@@ -84,9 +84,23 @@ internal static class Everything
                     arguments.Add(policy);
                 }
 
-                if (Program.Main(arguments.ToArray()) == 0 && File.Exists(model))
+                // Run in a child process rather than in this one. A crash
+                // that cannot be caught — a stack overflow while resolving
+                // types is the one already met here — would otherwise take
+                // the whole run with it, and the Python and PHP parts would
+                // be lost to a fault in the .NET part.
+                var self = Self();
+
+                var code = Run(self.Program, self.Before.Concat(arguments).ToList());
+
+                if (code == 0 && File.Exists(model))
                 {
                     models.Add(model);
+                }
+                else
+                {
+                    skipped.Add($".NET — {Ended(code)}");
+                    Console.WriteLine($"  {Ended(code)}, going on with the rest");
                 }
             }
 
@@ -108,13 +122,19 @@ internal static class Everything
                 var page = Path.Combine(work.FullName, $"{part.Name.ToLowerInvariant()}.html");
                 var model = Path.ChangeExtension(page, ".json");
 
-                if (Run(runner, part.Extractor, part.Argument, page, part.Name) && File.Exists(model))
+                var code = Run(runner, new List<string>
+                {
+                    part.Extractor, part.Argument, "--out", page, "--title", part.Name,
+                });
+
+                if (code == 0 && File.Exists(model))
                 {
                     models.Add(model);
                 }
                 else
                 {
-                    skipped.Add($"{part.Name} — its extractor did not finish");
+                    skipped.Add($"{part.Name} — {Ended(code)}");
+                    Console.WriteLine($"  {Ended(code)}, going on with the rest");
                 }
             }
 
@@ -367,19 +387,56 @@ internal static class Everything
         }
     }
 
-    private static bool Run(string runner, string extractor, string argument, string page, string title)
+    /// <summary>
+    /// How to start this program again: the file to run, and whatever has to
+    /// precede its own arguments. Run through the muxer — "dotnet
+    /// archview.dll" — the muxer is the program and the assembly is its first
+    /// argument; installed as an executable, there is nothing to prepend.
+    /// </summary>
+    private static (string Program, IReadOnlyList<string> Before) Self()
+    {
+        var process = Environment.ProcessPath;
+        var assembly = typeof(Everything).Assembly.Location;
+
+        if (process is null)
+        {
+            return ("dotnet", new[] { assembly });
+        }
+
+        var name = Path.GetFileNameWithoutExtension(process);
+
+        return string.Equals(name, "dotnet", StringComparison.OrdinalIgnoreCase)
+            ? (process, new[] { assembly })
+            : (process, Array.Empty<string>());
+    }
+
+    /// <summary>
+    /// What became of a pass, said plainly. A pass killed by the operating
+    /// system is not the same event as one that reported an error and stopped,
+    /// and calling both "did not finish" hides the more serious of the two.
+    /// </summary>
+    private static string Ended(int code) => code switch
+    {
+        -1 => "its extractor could not be started",
+        > 128 => $"its extractor was killed (signal {code - 128}) — likely a crash",
+        _ => $"its extractor stopped with an error (exit {code})",
+    };
+
+    /// <summary>
+    /// Runs a program to completion and returns its exit code, or -1 when it
+    /// could not be started at all.
+    /// </summary>
+    private static int Run(string runner, IReadOnlyList<string> arguments)
     {
         var info = new ProcessStartInfo(runner)
         {
             UseShellExecute = false,
         };
 
-        info.ArgumentList.Add(extractor);
-        info.ArgumentList.Add(argument);
-        info.ArgumentList.Add("--out");
-        info.ArgumentList.Add(page);
-        info.ArgumentList.Add("--title");
-        info.ArgumentList.Add(title);
+        foreach (var argument in arguments)
+        {
+            info.ArgumentList.Add(argument);
+        }
 
         try
         {
@@ -387,15 +444,15 @@ internal static class Everything
 
             if (process is null)
             {
-                return false;
+                return -1;
             }
 
             process.WaitForExit();
-            return process.ExitCode == 0;
+            return process.ExitCode;
         }
         catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
-            return false;
+            return -1;
         }
     }
 }

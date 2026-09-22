@@ -54,7 +54,17 @@ public static class Program
         var outPath = Option(args, "--out") ?? Path.Combine(Environment.CurrentDirectory, "arch.html");
         var withTypes = !args.Contains("--no-types");
 
-        var policy = Policy.Load(policyPath, root);
+        Policy policy;
+
+        try
+        {
+            policy = Policy.Load(policyPath, root);
+        }
+        catch (PolicyException e)
+        {
+            Console.Error.WriteLine(e.Message);
+            return 1;
+        }
 
         // A name given on the command line wins over the policy's, so a
         // caller joining several models can name each part by its ecosystem

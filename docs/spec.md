@@ -40,8 +40,31 @@ Three properties it must keep:
   read; when Python or PHP is about to be read by another pass, those areas
   are not named as unread. A report that disagrees with its own run teaches
   the reader to stop reading reports.
+- **Each pass runs in its own process.** Not for tidiness: a stack overflow
+  cannot be caught, and the first repository this command met crashed the
+  .NET pass. In one process that fault took the Python and PHP maps with it.
+  Now the pass is named, the signal that killed it is printed, and the rest
+  of the repository is still drawn.
 - **It is not the only way in.** Each extractor stays runnable alone, which is
   what keeps this part from accumulating language knowledge.
+
+### Which copy of an assembly wins, and why it is not a preference
+
+The .NET extractor resolves names against every assembly it can find: the
+runtime's, the shared frameworks', and whatever lies in the repository. For a
+name that occurs in more than one of those, **the runtime's copy wins**.
+
+That order is a bug fix. A repository built years ago carries the facades of
+its era — a `System.ComponentModel.Primitives.dll` that declares no type and
+forwards them all to `System`. The runtime carries the facades of this era:
+its `System.dll` forwards those same types back to
+`System.ComponentModel.Primitives`. Prefer the repository's copy and the two
+assemblies point at each other; chasing one forwarded type then recurses
+until the stack ends.
+
+Neither assembly is wrong. The pairing is, and the pairing is the tool's
+choice. A repository copy is therefore used only for a name the runtime does
+not have — the repository's own projects, and the packages it brought.
 
 ---
 

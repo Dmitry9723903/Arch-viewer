@@ -78,13 +78,25 @@ public sealed class AssemblyFacts : IDisposable
         // resolving an attribute's type needs whatever assembly declared it,
         // which is often a package rather than a project of this repository.
         //
-        // One path per assembly name, and the repository's own copy wins: the
-        // context refuses a name it has already loaded, and the same assembly
-        // reaches us from the runtime directory and from a shared framework
-        // both.
+        // One path per assembly name, and **the runtime's own copy wins** over
+        // a copy lying in the repository. That order is the fix for a stack
+        // overflow, not a preference:
+        //
+        // A repository built long ago can carry a facade of its own era —
+        // System.ComponentModel.Primitives.dll of the .NET Framework kind,
+        // which declares no type and forwards them all to System. The runtime
+        // we run on carries the facades of the other era: its System.dll
+        // forwards those same types back to System.ComponentModel.Primitives.
+        // Take the repository's copy over the runtime's and the two point at
+        // each other; chasing one forwarded type then recurses until the stack
+        // ends. Neither assembly is wrong — the pairing is, and the pairing is
+        // ours to choose.
+        //
+        // So a repository copy is used only for a name the runtime does not
+        // have: this repository's own projects, and the packages it brought.
         var paths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var path in everything.Concat(SharedFrameworks()).Concat(runtime))
+        foreach (var path in runtime.Concat(SharedFrameworks()).Concat(everything))
         {
             var name = Path.GetFileNameWithoutExtension(path);
 

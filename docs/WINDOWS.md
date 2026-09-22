@@ -66,6 +66,11 @@ come from compiled assemblies and their PDBs.
 
 ## If something looks wrong
 
+**A pass says it was killed.** The command prints the signal and goes on with
+the other languages, so the map you get is missing that one part and says so.
+Open an issue with the line it printed — a crash is a defect in the extractor,
+not something to work around.
+
 **The page is blank.** The model may be too large — the run says so and names
 `--no-source`, which drops the text and keeps the structure.
 
