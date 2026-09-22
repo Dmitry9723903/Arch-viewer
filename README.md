@@ -160,6 +160,8 @@ not changed by a single line** to draw it.
 
 ## Running it
 
+On Windows, see [docs/WINDOWS.md](docs/WINDOWS.md).
+
 ```bash
 dotnet build src/ArchViewer.Extract/ArchViewer.Extract.csproj
 dotnet src/ArchViewer.Extract/bin/Debug/net10.0/archview.dll <repository> --out arch.html

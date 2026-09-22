@@ -15,7 +15,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 
 const SKIP = new Set([
   'node_modules', 'dist', 'build', 'out', 'coverage', '.git', '.next',
@@ -282,7 +282,10 @@ const json = JSON.stringify(model, null, 2);
 fs.writeFileSync(out.replace(/\.html$/, '.json'), json);
 
 if (out.endsWith('.html')) {
-  const viewer = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../viewer/index.html');
+  // fileURLToPath, not the URL's pathname: on Windows that yields "/C:/…",
+  // which is not a path anything can open.
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const viewer = path.resolve(here, '../../viewer/index.html');
   if (fs.existsSync(viewer)) {
     fs.writeFileSync(out, fs.readFileSync(viewer, 'utf8').replace('/*MODEL*/null', json));
   } else {

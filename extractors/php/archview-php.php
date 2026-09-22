@@ -52,6 +52,21 @@ function fragment(array $lines, int $from, int $to, int $limit = 400): string
     return $taken . "\n\n… {$rest} more lines; open the file to read them.";
 }
 
+/**
+ * A path in one shape. Windows gives back backslashes, and the rest of this
+ * file compares, splits and prints paths with forward ones.
+ */
+function slashes(string $path): string
+{
+    return str_replace('\\', '/', $path);
+}
+
+/** A file's path relative to the repository root, in that same shape. */
+function relative(string $root, string $file): string
+{
+    return ltrim(substr(slashes($file), strlen(slashes($root))), '/');
+}
+
 /** Files worth reading. */
 function files(string $root): array
 {
@@ -182,7 +197,7 @@ function readWithParser(string $root, string $file): array
                 $members[] = ['text' => $method->name->toString() . "({$args})", 'line' => $method->getStartLine()];
             }
 
-            $relative = ltrim(str_replace($root, '', $file), '/');
+            $relative = relative($root, $file);
             $types[] = [
                 'id' => ($namespace !== '' ? $namespace . '\\' : '') . $name,
                 'name' => $name,
@@ -223,7 +238,7 @@ function readWithTokens(string $root, string $file): array
     }
 
     $lines = explode("\n", $text);
-    $relative = ltrim(str_replace($root, '', $file), '/');
+    $relative = relative($root, $file);
     $types = [];
     $imports = [];
     $namespace = '';
@@ -405,7 +420,7 @@ function build(string $root, array $modules, string $title, int $depth): array
         // instead, and the container says which it is — a namespace and a
         // folder are different things and must not sit unlabelled together.
         if ($namespace === '') {
-            $directory = trim(dirname($module['relative']), '.');
+            $directory = trim(slashes(dirname($module['relative'])), '.');
             $parts = $directory === '' ? [] : array_slice(explode('/', $directory), 0, $depth);
             $kind = 'folder';
         } else {
@@ -534,8 +549,8 @@ foreach ($found as $file) {
     }
 
     $modules[] = [
-        'id' => substr(ltrim(str_replace($root, '', $file), '/'), 0, -4),
-        'relative' => ltrim(str_replace($root, '', $file), '/'),
+        'id' => substr(relative($root, $file), 0, -4),
+        'relative' => relative($root, $file),
         'types' => $read['types'],
         'imports' => $read['imports'],
     ];
