@@ -721,7 +721,18 @@ public sealed class AssemblyFacts : IDisposable
         var all = new Dictionary<string, Candidate>(StringComparer.Ordinal);
         var seen = 0;
 
-        foreach (var dll in Directory.EnumerateFiles(root, "*.dll", SearchOption.AllDirectories))
+        // Both extensions. A project that builds an application builds an
+        // .exe, and looking only for .dll left every application, service
+        // and console tool without a single type — silently, since a project
+        // with no types looks exactly like a project nobody built.
+        var candidates = Directory
+            .EnumerateFiles(root, "*.dll", SearchOption.AllDirectories)
+            .Select(path => (Path: path, Executable: false))
+            .Concat(Directory
+                .EnumerateFiles(root, "*.exe", SearchOption.AllDirectories)
+                .Select(path => (Path: path, Executable: true)));
+
+        foreach (var (dll, executable) in candidates)
         {
             var name = Path.GetFileNameWithoutExtension(dll);
 
@@ -738,7 +749,12 @@ public sealed class AssemblyFacts : IDisposable
 
             var own = IsOwnOutput(dll, name);
 
-            if (!all.TryGetValue(name, out var best) || Better(own, written, best))
+            // An .exe reaches the resolver only when a project of this
+            // repository builds it. A legacy tree carries installers and
+            // third-party tools that are not managed code at all, and
+            // handing those to the resolver buys nothing and risks a throw.
+            if ((!executable || want.Contains(name))
+                && (!all.TryGetValue(name, out var best) || Better(own, written, best)))
             {
                 all[name] = new Candidate(dll, written, own);
             }
