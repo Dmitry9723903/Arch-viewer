@@ -57,6 +57,12 @@ idea for other languages.
 
 ## What makes this one different
 
+**It says what it cannot read.** A repository often holds more than one
+ecosystem — a Python test harness, a TypeScript client — and an extractor that
+knows .NET projects leaves those out entirely. Every run names them: which
+directories hold code it did not read, in what language, and how much. A
+missing area that announces itself is a limit; one that says nothing is a lie.
+
 **It targets .NET, and reads metadata rather than text.** Project references
 come from `.csproj` files; types and members come from assembly metadata via
 `MetadataLoadContext`, which reads compiled assemblies without executing

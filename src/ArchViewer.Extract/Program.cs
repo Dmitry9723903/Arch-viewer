@@ -63,6 +63,7 @@ public static class Program
         File.WriteAllText(outPath, Page(json));
 
         Report(model, projects.Count, facts.Known.Count, outPath, facts);
+        ReportUnread(root, policy, projects);
         return 0;
     }
 
@@ -117,6 +118,102 @@ public static class Program
 
         return nodes.Sum(n =>
             n.Types.Count(t => t.File is not null && t.Source is null) + Stale(n.Children, built));
+    }
+
+    /// <summary>
+    /// Areas of the repository this extractor cannot read. It knows .NET
+    /// projects and nothing else, so a directory of Python or TypeScript is
+    /// simply absent from the map — and a reader who sees it in the file
+    /// listing but not on the screen has no way to tell whether it was
+    /// skipped or lost. Saying so is the difference.
+    /// </summary>
+    private static void ReportUnread(
+        string root,
+        Policy policy,
+        IReadOnlyList<ProjectFile> projects)
+    {
+        var read = projects
+            .Select(p => p.RelativePath.Split('/')[0])
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var unread = new List<(string Area, string Language, int Files)>();
+        var excluded = new List<(string Area, string Language, int Files)>();
+
+        foreach (var directory in Directory.EnumerateDirectories(root))
+        {
+            var area = Path.GetFileName(directory);
+
+            if (area.StartsWith('.') || read.Contains(area))
+            {
+                continue;
+            }
+
+            var byPolicy = policy.Exclude.Contains(area, StringComparer.OrdinalIgnoreCase);
+
+            var counted = Languages
+                .Select(pair => (pair.Language, Files: CountFiles(directory, pair.Pattern)))
+                .Where(x => x.Files > 0)
+                .OrderByDescending(x => x.Files)
+                .FirstOrDefault();
+
+            if (counted.Files == 0)
+            {
+                continue;
+            }
+
+            (byPolicy ? excluded : unread).Add((area, counted.Language, counted.Files));
+        }
+
+        if (unread.Count > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine("Not read — this extractor knows .NET projects only:");
+
+            foreach (var (area, language, files) in unread.OrderBy(x => x.Area, StringComparer.Ordinal))
+            {
+                Console.WriteLine($"  {area}/ — {files} {language} files, no .csproj");
+            }
+        }
+
+        if (excluded.Count > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine("Excluded by the policy, and holding code:");
+
+            foreach (var (area, language, files) in excluded.OrderBy(x => x.Area, StringComparer.Ordinal))
+            {
+                Console.WriteLine($"  {area}/ — {files} {language} files");
+            }
+        }
+    }
+
+    private static readonly (string Language, string Pattern)[] Languages =
+    {
+        ("Python", "*.py"),
+        ("TypeScript", "*.ts"),
+        ("JavaScript", "*.js"),
+        ("C++", "*.cpp"),
+        ("C", "*.c"),
+        ("Java", "*.java"),
+        ("Go", "*.go"),
+        ("Rust", "*.rs"),
+    };
+
+    private static int CountFiles(string directory, string pattern)
+    {
+        try
+        {
+            return Directory.EnumerateFiles(directory, pattern, SearchOption.AllDirectories)
+                .Where(f => !f.Contains("/node_modules/", StringComparison.Ordinal)
+                            && !f.Contains("/__pycache__/", StringComparison.Ordinal)
+                            && !f.Contains("/dist/", StringComparison.Ordinal))
+                .Take(5000)
+                .Count();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return 0;
+        }
     }
 
     private static int Count(IReadOnlyList<Node> nodes) =>

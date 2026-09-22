@@ -244,6 +244,21 @@ metadata could have found, because they appear only in method signatures.
 of a registration method and not the generic arguments of the registrations
 inside it, so `AddScoped<IThing, Thing>()` remains invisible to both.
 
+#### Areas it cannot read at all
+
+This extractor knows .NET projects. A directory holding Python, TypeScript or
+C++ contains no `.csproj` and is therefore absent from the map entirely — not
+empty on it, absent from it.
+
+A reader who sees such a directory in the file listing and not on the screen
+cannot tell whether it was skipped, lost, or never there. The run therefore
+names them: which areas hold code, in what language, and how much. Areas the
+policy excludes are listed separately, because that is a decision someone made
+rather than a limit of the tool.
+
+Supporting such an area means writing an extractor for it that emits the same
+model file. The viewer needs no changes: it has never known a language.
+
 #### What this does not see
 
 Named here because an assumption left unwritten is how the reader is misled.
