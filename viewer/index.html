@@ -208,6 +208,11 @@ function render() {
   }
 
   const edges = visibleEdges(boxes);
+
+  // Where nothing here refers to anything else here, the canvas is a grid of
+  // boxes with no lines, which reads as a broken drawing rather than as a
+  // fact about the code. Say it, and say where the connections went.
+  const outward = leaving(boxes);
   const cols = Math.max(1, Math.min(5, Math.ceil(Math.sqrt(boxes.length))));
   const W = 200, H = 64, GX = 90, GY = 60;
   const pos = new Map();
@@ -233,7 +238,33 @@ function render() {
 
   canvas.appendChild(svg);
 
+  if (edges.length === 0 && boxes.length > 1) {
+    const note = document.createElement('p');
+    note.className = 'own-types';
+    note.textContent = outward.out || outward.into
+      ? `Nothing here refers to anything else here. ${outward.out} references leave this level, ${outward.into} arrive — the panel names them.`
+      : 'Nothing here refers to anything else here, and nothing refers to it.';
+    canvas.appendChild(note);
+  }
+
   if (!state.selected && current) select(current);
+}
+
+// References crossing this level's edge, counted so the reader knows whether
+// an empty canvas means "unconnected" or "connected elsewhere".
+function leaving(boxes) {
+  const inside = new Set();
+  for (const b of boxes) {
+    if (b.node) idsUnder(b.node).forEach(id => inside.add(id));
+    else inside.add(b.id);
+  }
+  let out = 0, into = 0;
+  for (const e of MODEL.edges) {
+    const a = inside.has(e.from), b = inside.has(e.to);
+    if (a && !b) out++;
+    else if (b && !a) into++;
+  }
+  return { out, into };
 }
 
 // One box for one type, dashed to tell it from a container.
