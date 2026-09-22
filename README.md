@@ -126,9 +126,11 @@ language's own parser.
 |---|---|---|
 | .NET | `src/ArchViewer.Extract` | one, from Microsoft |
 | Python | `extractors/python` | none — `ast` ships with the language |
+| TypeScript, JavaScript | `extractors/typescript` | none — the target repository's own compiler is used |
 
 ```bash
 python3 extractors/python/archview_python.py <repository> --out arch.html
+node     extractors/typescript/archview-ts.mjs <repository> --out arch.html
 ```
 
 Proven on a Django repository of 442 modules and 425 classes: **the viewer was
