@@ -43,12 +43,26 @@ public static class Builder
 
             var declared = Authored(facts.Types(placement.Project.Name), policy);
 
+            // Two different emptinesses, and they need different answers.
+            // A project whose assembly was never built shows nothing and
+            // building fixes it. A project that was built and declares
+            // nothing also shows nothing, and building it again is advice
+            // that wastes the reader's time and their trust in the screen.
+            var built = facts.Known.Contains(
+                placement.Project.Name, StringComparer.OrdinalIgnoreCase);
+
             var leaf = new MutableNode(placement.Project.Name, placement.Project.Name, "project")
             {
                 Role = placement.Role,
                 Project = placement.Project.RelativePath,
                 Types = declared,
                 GroupPath = placement.Groups.Select(g => g.Name).ToList(),
+                Note = declared.Count > 0
+                    ? null
+                    : built
+                        ? "This project was read and declares no types."
+                        : "No assembly was read for this project. "
+                          + "Build the repository, then read it again.",
             };
 
             if (policy.Types is { } arrangement
@@ -516,6 +530,9 @@ internal sealed class MutableNode(string id, string label, string kind)
     /// <summary>Project file, for a leaf.</summary>
     public string? Project { get; init; }
 
+    /// <summary>Why this container is empty, when it is.</summary>
+    public string? Note { get; init; }
+
     /// <summary>Group names above this node, outermost first.</summary>
     public IReadOnlyList<string> GroupPath { get; init; } = Array.Empty<string>();
 
@@ -533,6 +550,7 @@ internal sealed class MutableNode(string id, string label, string kind)
         Kind = Kind,
         Role = Role,
         Project = Project,
+        Note = Note,
         Children = Children.Select(c => c.Freeze()).ToList(),
         Types = Types,
     };

@@ -41,6 +41,19 @@ public sealed class Node
     /// <summary>Project file this container came from, relative to the root.</summary>
     public string? Project { get; init; }
 
+    /// <summary>
+    /// Why this container shows nothing, when it shows nothing.
+    /// <para>
+    /// The viewer cannot work this out and must not try: "nothing here" has
+    /// a different cause and a different remedy in every ecosystem, and a
+    /// screen that says "build the repository so assemblies exist" over a
+    /// map of C++ is giving advice about a thing that does not exist there.
+    /// Whoever read the repository knows why it came out empty, so whoever
+    /// read it says so.
+    /// </para>
+    /// </summary>
+    public string? Note { get; init; }
+
     /// <summary>Nested containers.</summary>
     public IReadOnlyList<Node> Children { get; init; } = Array.Empty<Node>();
 

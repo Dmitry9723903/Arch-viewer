@@ -82,6 +82,12 @@ class ModelFile:
             "project": str(module.project) if module.project else None,
             "children": [],
             "types": types,
+            # Why the box is empty, said by the reader that knows. Nothing
+            # here needs building: the files were read and declared no type,
+            # which happens in C — functions and no struct at all.
+            "note": None
+            if types
+            else "This module was read; its files declare no type.",
         }
 
     def _type(self, identifier: str, declaration: Declaration) -> dict:

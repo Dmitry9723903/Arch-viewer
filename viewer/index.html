@@ -573,13 +573,15 @@ function select(n) {
         }
         html += t.source
           ? renderCode(t.source, t.line || 1)
-          : `<p class="nocode">No source. The repository was built without PDBs, or this type is compiler-generated.</p>`;
+          : `<p class="nocode">No source text was read for this type.</p>`;
         for (const m of (t.members || [])) html += `<div class="member">${esc(m.text)}</div>`;
       }
       html += `</div>`;
     });
   } else if (!n.children || n.children.length === 0) {
-    html += `<h2>Types</h2><p class="empty">None read. Build the repository so assemblies exist.</p>`;
+    // What an empty container means is the extractor's to say, not this
+    // page's: it differs by ecosystem, and this page knows of none.
+    html += `<h2>Types</h2><p class="empty">${esc(n.note || 'Nothing was read in this container.')}</p>`;
   }
 
   panel.innerHTML = html;
