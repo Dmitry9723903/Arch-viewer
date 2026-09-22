@@ -269,12 +269,27 @@ language and fails silently, which is how a map comes to be confidently wrong.
 
 Named here because an assumption left unwritten is how the reader is misled.
 
-**Bodies of methods are not read.** Only what a type inherits, implements and
-holds. A composition root that registers thirty implementations produces no
-edges at all: it names them inside a method. So a rule of the form "nothing
-but the composition root may reference the implementations" cannot be checked
-by this model, and a repository whose wiring lives in `AddScoped` calls will
-look less connected than it is.
+**Bodies of methods are read for one thing only: the types a call names as
+its generic arguments.** `"readRegistrations": true` records them, with kind
+`wires`.
+
+That is how a composition root states its wiring. `AddScoped<IThing, Thing>()`
+puts both types nowhere in the shape of the registering class — not in a
+field, not in a base list — and only in the instruction that registers them.
+Without this, a repository whose assembly lives in such calls looks far less
+connected than it is, and the rule "nothing but the composition root may
+reference the implementations" cannot be checked at all.
+
+This is not interpreting behaviour. A generic argument is a type named in
+metadata; the instruction is merely where it is named. Nothing else about the
+method is read — not its calls' targets, not its logic, not its data flow.
+
+Every instruction is stepped over by its true length. Guessing at the stride
+would read an operand as an opcode and invent calls nobody wrote, which is why
+the operand table is stated outright rather than approximated.
+
+On one repository this found 61 registrations in its composition root — 28
+interfaces and 27 implementations — where the map had shown none.
 
 **The newest copy of an assembly is read, and older ones are counted aloud.**
 A repository holds the same assembly once per configuration and again in every

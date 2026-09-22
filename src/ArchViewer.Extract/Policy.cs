@@ -37,6 +37,14 @@ public sealed class Policy
     public bool UseGraphify { get; init; }
 
     /// <summary>
+    /// Whether to record the types a call names as its generic arguments —
+    /// how a composition root says what it wires to what. Off unless asked:
+    /// it reads instruction streams, which is slower, and on a repository
+    /// that wires things some other way it adds nothing.
+    /// </summary>
+    public bool ReadRegistrations { get; init; }
+
+    /// <summary>
     /// Reads a policy file, or returns a default that groups by directory.
     /// </summary>
     public static Policy Load(string? path, string root)

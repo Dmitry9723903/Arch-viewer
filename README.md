@@ -57,6 +57,12 @@ idea for other languages.
 
 ## What makes this one different
 
+**It can see a composition root.** Wiring stated as `AddScoped<IThing, Thing>()`
+appears nowhere in the shape of the class that registers it — only in the
+instruction. Those generic arguments are read from the instruction stream, on
+request, and become edges of their own kind, so a rule can say "nothing but the
+root may reference the implementations" and have it mean something.
+
 **It says what it cannot read.** A repository often holds more than one
 ecosystem — a Python test harness, a TypeScript client — and an extractor that
 knows .NET projects leaves those out entirely. Every run names them: which

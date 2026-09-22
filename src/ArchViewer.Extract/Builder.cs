@@ -75,6 +75,11 @@ public static class Builder
             edges.AddRange(Borrowed(root, top, policy));
         }
 
+        if (policy.ReadRegistrations)
+        {
+            edges.AddRange(Wired(placements, top, facts, policy));
+        }
+
         foreach (var node in top)
         {
             roots.Add(node.Freeze());
@@ -154,6 +159,68 @@ public static class Builder
         }
 
         return edges;
+    }
+
+    /// <summary>
+    /// What a type names as the generic arguments of the calls it makes —
+    /// how a composition root states its wiring. Judged like any other
+    /// reference, and marked with its own kind so a rule can treat assembly
+    /// differently from use.
+    /// </summary>
+    private static IEnumerable<Edge> Wired(
+        IReadOnlyList<Placement> placements,
+        IReadOnlyList<MutableNode> roots,
+        AssemblyFacts facts,
+        Policy policy)
+    {
+        var holder = new Dictionary<string, MutableNode>(StringComparer.Ordinal);
+
+        void Collect(MutableNode node)
+        {
+            foreach (var type in node.Types)
+            {
+                holder[type.Id] = node;
+            }
+
+            foreach (var child in node.Children)
+            {
+                Collect(child);
+            }
+        }
+
+        foreach (var node in roots)
+        {
+            Collect(node);
+        }
+
+        var known = new HashSet<string>(holder.Keys, StringComparer.Ordinal);
+
+        foreach (var placement in placements)
+        {
+            if (!facts.Paths.TryGetValue(placement.Project.Name, out var path))
+            {
+                continue;
+            }
+
+            foreach (var (from, to) in Registrations.Read(path, known))
+            {
+                if (!holder.TryGetValue(from, out var source)
+                    || !holder.TryGetValue(to, out var target))
+                {
+                    continue;
+                }
+
+                var crosses = !Encloses(source, target) && !Encloses(target, source);
+
+                yield return new Edge
+                {
+                    From = from,
+                    To = to,
+                    Kind = "wires",
+                    Violates = crosses ? Rules.Check(source, target, policy, "wires") : null,
+                };
+            }
+        }
     }
 
     /// <summary>

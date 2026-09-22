@@ -18,6 +18,7 @@ public sealed class AssemblyFacts : IDisposable
     private readonly MetadataLoadContext? _context;
     private readonly Dictionary<string, Assembly> _assemblies = new(StringComparer.Ordinal);
     private readonly Dictionary<string, SourceIndex> _sources = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _paths = new(StringComparer.Ordinal);
     private readonly string _root;
 
     /// <summary>
@@ -34,6 +35,9 @@ public sealed class AssemblyFacts : IDisposable
 
     /// <summary>Assembly names that were found and read.</summary>
     public IReadOnlyCollection<string> Known => _assemblies.Keys;
+
+    /// <summary>Where each assembly was read from.</summary>
+    public IReadOnlyDictionary<string, string> Paths => _paths;
 
     /// <summary>
     /// How many older copies of the wanted assemblies were passed over.
@@ -111,6 +115,7 @@ public sealed class AssemblyFacts : IDisposable
             {
                 facts._assemblies[name] = context.LoadFromAssemblyPath(path);
                 facts._sources[name] = SourceIndex.Open(path, root);
+                facts._paths[name] = path;
             }
             catch (Exception e) when (e is BadImageFormatException or FileLoadException)
             {
