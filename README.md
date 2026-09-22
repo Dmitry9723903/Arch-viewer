@@ -76,6 +76,13 @@ express "an adapter may reference *its own* application layer and no other",
 because "its own" is a second axis. Here a node carries both its container
 path and its role, so rules can speak about both.
 
+**Another tool's graph can be borrowed, and is labelled.** Metadata cannot see
+inside a method, so what a signature accepts and returns is invisible — which
+for a transport layer is most of its coupling. Where a graph from another tool
+lies beside the repository, those references can be read from it: drawn dashed,
+counted apart, carrying the name of where they came from, and refusable by any
+rule. Evidence of a different kind is never quietly mixed in.
+
 **Nothing unmeasured is displayed.** Colour means a rule violation, which is
 computed. Coverage, cyclomatic complexity and mutation results appear only
 when a snapshot that actually measured them is supplied. A metric nobody

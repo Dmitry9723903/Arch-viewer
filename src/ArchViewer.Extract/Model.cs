@@ -111,8 +111,17 @@ public sealed class Edge
     /// <summary>Id of the referenced container.</summary>
     public required string To { get; init; }
 
-    /// <summary>dependency, implements, inheritance or association.</summary>
+    /// <summary>
+    /// dependency, package, association, implements, inheritance — read from
+    /// metadata; signature or call — read from another tool's graph.
+    /// </summary>
     public required string Kind { get; init; }
+
+    /// <summary>
+    /// Where this edge came from, when not from this repository's own
+    /// metadata. Evidence of a different kind is labelled as such.
+    /// </summary>
+    public string? Origin { get; init; }
 
     /// <summary>Id of the rule this edge breaks, or null when it breaks none.</summary>
     public string? Violates { get; init; }

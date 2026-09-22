@@ -29,6 +29,14 @@ public sealed class Policy
     public TypeGrouping? Types { get; init; }
 
     /// <summary>
+    /// Whether to read a graph another tool left beside the repository, for
+    /// the references metadata cannot see — what a method accepts, returns
+    /// and calls. Off unless asked: it makes the model depend on a second
+    /// tool's output and its freshness.
+    /// </summary>
+    public bool UseGraphify { get; init; }
+
+    /// <summary>
     /// Reads a policy file, or returns a default that groups by directory.
     /// </summary>
     public static Policy Load(string? path, string root)

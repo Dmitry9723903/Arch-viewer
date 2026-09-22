@@ -95,6 +95,9 @@
      rule is the thing to see. */
   path.edge.bad { stroke: var(--bad); stroke-width: 2.5; marker-end: url(#ab); }
   path.edge.faint { opacity: .18; }
+  /* Evidence of another kind, drawn as such: read from another tool's graph
+     rather than from this repository's own metadata. */
+  path.edge.borrowed { stroke-dasharray: 5 3; }
   path.edge.bad.faint { opacity: .5; }
   text.rule { fill: var(--bad); font-size: 10px;
               font-family: ui-monospace, Menlo, Consolas, monospace; }
@@ -169,7 +172,10 @@ function visibleEdges(boxes) {
     const key = a + '\u0000' + b;
     const prev = seen.get(key);
     if (prev && !prev.violates) { if (e.violates) prev.violates = e.violates; continue; }
-    if (!prev) seen.set(key, { from: a, to: b, violates: e.violates || null });
+    if (!prev) seen.set(key, {
+      from: a, to: b, violates: e.violates || null,
+      kind: e.kind, origin: e.origin || null,
+    });
   }
   return [...seen.values()];
 }
@@ -285,15 +291,17 @@ function edgePath(pos, e, W, H, anchor = state.selected) {
   const dim = anchor && !out && !into;
 
   p.setAttribute('class', 'edge'
+    + (e.origin ? ' borrowed' : '')
     + (e.violates ? ' bad' : '')
     + (out ? ' out' : '')
     + (into ? ' into' : '')
     + (dim ? ' faint' : ''));
 
   const t = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+  const origin = e.origin ? ` (${e.origin})` : '';
   t.textContent = e.violates
-    ? `${short(e.from)} → ${short(e.to)} breaks ${e.violates}`
-    : `${short(e.from)} → ${short(e.to)}`;
+    ? `${short(e.from)} → ${short(e.to)} [${e.kind}]${origin} breaks ${e.violates}`
+    : `${short(e.from)} → ${short(e.to)} [${e.kind}]${origin}`;
   p.appendChild(t);
   return p;
 }
@@ -430,7 +438,10 @@ function select(n) {
     MODEL.edges.filter(e => inside.includes(e.to) && !inside.includes(e.from)).map(e => [e.from, e])
   ).values()];
 
-  html += `<h2><span class="out-dot"></span>Depends on (${out.length})</h2>`;
+  const borrowed = out.filter(e => e.origin).length;
+  html += `<h2><span class="out-dot"></span>Depends on (${out.length})`;
+  if (borrowed) html += ` <span class="vis">${borrowed} from graphify</span>`;
+  html += `</h2>`;
   html += out.length
     ? list(out.map(e => e.to))
     : '<p class="empty">Nothing.</p>';

@@ -221,6 +221,29 @@ crosses no boundary, and a rule about boundaries has nothing to say about it.
 The edge is kept because "who sits on this base class" is worth answering and
 is usually answered within one namespace.
 
+### Borrowing what metadata cannot see
+
+`"useGraphify": true` reads a graph another tool left in `graphify-out/` beside
+the repository, and takes from it the references metadata cannot reach: what a
+method accepts and returns, and what it calls. Off unless asked.
+
+Such edges carry their own kinds — `signature`, `call` — and an `origin`
+naming where they came from. They are drawn dashed and counted separately, and
+a rule can decline them through `kinds`. Evidence of a different kind is
+labelled as such rather than mixed in.
+
+Only what that tool marked as extracted is taken; what it inferred is a guess,
+and a guess does not belong beside a measurement. A reference whose target
+name belongs to two types is dropped rather than attributed to one of them.
+
+On one repository this turned a layer's 23 known references into 85: its
+controllers were coupled to 58 request and response types that no reading of
+metadata could have found, because they appear only in method signatures.
+
+**It does not close the composition root.** That tool records the parameters
+of a registration method and not the generic arguments of the registrations
+inside it, so `AddScoped<IThing, Thing>()` remains invisible to both.
+
 #### What this does not see
 
 Named here because an assumption left unwritten is how the reader is misled.

@@ -70,6 +70,11 @@ public static class Builder
             edges.AddRange(TypeEdges(placements, top, facts, policy));
         }
 
+        if (policy.UseGraphify)
+        {
+            edges.AddRange(Borrowed(root, top, policy));
+        }
+
         foreach (var node in top)
         {
             roots.Add(node.Freeze());
@@ -149,6 +154,79 @@ public static class Builder
         }
 
         return edges;
+    }
+
+    /// <summary>
+    /// References another tool's graph records and metadata cannot: what a
+    /// method accepts, returns and calls. Judged by the same rules, marked
+    /// with their own kinds and their origin, so a rule may decline them and
+    /// a reader can tell them apart.
+    /// </summary>
+    private static IEnumerable<Edge> Borrowed(
+        string root,
+        IReadOnlyList<MutableNode> roots,
+        Policy policy)
+    {
+        var holder = new Dictionary<string, MutableNode>(StringComparer.Ordinal);
+        var byName = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        var byFile = new Dictionary<(string, string), string>();
+
+        void Collect(MutableNode node)
+        {
+            foreach (var type in node.Types)
+            {
+                holder[type.Id] = node;
+
+                var simple = type.Name;
+
+                if (!byName.TryGetValue(simple, out var list))
+                {
+                    byName[simple] = list = new List<string>();
+                }
+
+                list.Add(type.Id);
+
+                if (type.File is not null)
+                {
+                    byFile[(type.File, simple)] = type.Id;
+                }
+            }
+
+            foreach (var child in node.Children)
+            {
+                Collect(child);
+            }
+        }
+
+        foreach (var node in roots)
+        {
+            Collect(node);
+        }
+
+        var names = byName.ToDictionary(
+            pair => pair.Key,
+            pair => (IReadOnlyList<string>)pair.Value,
+            StringComparer.Ordinal);
+
+        foreach (var (from, to, kind) in GraphifySource.Read(root, names, byFile))
+        {
+            if (!holder.TryGetValue(from, out var source)
+                || !holder.TryGetValue(to, out var target))
+            {
+                continue;
+            }
+
+            var crosses = !Encloses(source, target) && !Encloses(target, source);
+
+            yield return new Edge
+            {
+                From = from,
+                To = to,
+                Kind = kind,
+                Origin = "graphify",
+                Violates = crosses ? Rules.Check(source, target, policy, kind) : null,
+            };
+        }
     }
 
     /// <summary>
