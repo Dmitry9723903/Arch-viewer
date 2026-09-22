@@ -71,10 +71,24 @@ A milestone is complete when these pass. Marked as they stand.
    deliberate include that crosses a boundary the policy forbids. Read by
    one command: 7 types, 4 references between modules, and exactly one
    crossing, drawn red and named `adapters-serve-their-own-module`.
-2. **Not run.** The two readers compared on one example. clang is not
-   installed on the machine this was written on, and installing a compiler
-   front-end is a decision to take deliberately rather than in passing. The
-   clang reader is written and is not claimed to have been verified.
+2. **Passes, and found a defect in each reader.** With clang installed, the
+   two agree on every declaration of the example — the same spans, the same
+   stereotypes, the same member text — except one: `SerialTraits`, declared
+   inside a macro, which only clang can see. That difference is the stated
+   limit of the tokeniser, demonstrated rather than asserted.
+
+   Getting there cost two fixes. The clang reader was passing clang a
+   repository-relative path, which resolves against the working directory;
+   the file itself arrived through `unsaved_files` and parsed, so nothing
+   failed, but every `#include` beside it was looked for in the wrong place.
+   clang then recovered rather than complaining: a base class it could not
+   resolve simply vanished, and a field of an unknown type was reported as
+   `int`. The map would have shown a member type nobody measured. The
+   tokeniser, for its part, was counting a constructor's parameters as
+   fields of the class.
+
+   Neither defect is visible without the comparison. That is what the check
+   was for.
 3. **Passes.** A legacy repository of 1,885 C/C++ files: 52 modules from 37
    Visual C++ projects, 5,054 declarations, 61 references between modules,
    in 53 seconds. It states what it did not read: 642 of 5,222 includes name

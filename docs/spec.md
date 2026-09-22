@@ -70,6 +70,17 @@ the map said so in the only way a map can — by showing nothing.
 A verdict is recomputed from the policy on every run and never read back
 from the model file. A stale verdict is worse than none: it is trusted.
 
+### Two readers for one language, and why they are compared
+
+Where a language offers both a real parser and a way to read it without
+installing one, this tool takes both — clang or its own tokeniser for C++,
+`nikic/PHP-Parser` or the language's tokeniser for PHP.
+
+The reason is not redundancy. Each reader is checked against the other on
+the same example, and every difference is either a stated limit or a defect
+in one of them. Both times this has been done it found a defect that neither
+reader showed on its own.
+
 ### Which copy of an assembly wins, and why it is not a preference
 
 The .NET extractor resolves names against every assembly it can find: the

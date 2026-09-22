@@ -1,8 +1,8 @@
 # arch-viewer
 
 Look at the structure of a repository instead of reading its code — C#, C,
-C++, Python, TypeScript, JavaScript, PHP and SQL, on one map, from one
-command.
+C++, Python, TypeScript, JavaScript, PHP, Delphi and SQL, on one map, from
+one command.
 
 `arch-viewer` reads a repository and draws it as a graph you can drill into:
 container → nested container → type → member → source. Dependencies that
@@ -10,7 +10,7 @@ break your own rules are drawn in red, labelled with the rule they break.
 
 ![A module with a type open, showing its source](docs/screenshot.png)
 
-**Status: early but working.** Eight languages are read, by six extractors
+**Status: early but working.** Nine languages are read, by seven extractors
 that share one model file and one viewer. Types, members and jump-to-source
 work; for C# the repository has to have been built. Not yet done: measured
 metrics and what-if proposals. See [docs/spec.md](docs/spec.md).
@@ -141,9 +141,10 @@ language's own parser.
 | Python | packages, modules, classes, module-level functions | the `ast` module of the language itself | Python 3.10+ |
 | TypeScript, JavaScript | folders, modules, classes, interfaces, enums | the TypeScript compiler **of the repository being read** | Node.js 18+, and `npm install` in that repository |
 | PHP | namespaces, classes, interfaces, traits, enums | `nikic/PHP-Parser` when composer has installed it, the language's own tokeniser otherwise | PHP 8.0+ |
+| Delphi, Object Pascal | units, `uses` between them, classes, records, interfaces, enumerations | its own tokeniser; a compiler directive is not a comment | Python 3.10+ |
 | SQL | tables, views, procedures, functions, triggers, and what each one names | its own tokeniser; comments and string literals are not code | Python 3.10+ |
 
-Nothing else is read. Java, Go, Rust and Delphi are counted and named as
+Nothing else is read. Java, Go and Rust are counted and named as
 unread rather than passed over in silence — the command tells you how many
 files of them it found and left alone.
 
@@ -162,9 +163,13 @@ leaking into each other:
 
 ```bash
 python3 extractors/python/archview_python.py <repository> --out arch.html
+python3 extractors/cpp/archview_cpp.py       <repository> --out arch.html
+python3 extractors/delphi/archview_delphi.py <repository> --out arch.html
+python3 extractors/sql/archview_sql.py       <repository> --out arch.html
 node     extractors/typescript/archview-ts.mjs <repository> --out arch.html
 php      extractors/php/archview-php.php <repository> --out arch.html
 archview merge a.json b.json --out arch.html --title "<repo>"
+archview judge arch.json --policy .arch-viewer/policy.json --out arch.html
 ```
 
 Each part keeps its own container and its own kinds. They are not blended: a
@@ -184,7 +189,7 @@ never guessed at.
 | For | Version | Linux (Debian/Ubuntu) | Windows |
 |---|---|---|---|
 | the tool, and reading C# | .NET SDK **10** | `sudo apt install dotnet-sdk-10.0` | [dotnet.microsoft.com/download](https://dotnet.microsoft.com/download) |
-| reading Python, C, C++ or SQL | Python **3.10+** | usually present; `sudo apt install python3` | [python.org](https://python.org) — tick *Add to PATH* |
+| reading Python, C, C++, Delphi or SQL | Python **3.10+** | usually present; `sudo apt install python3` | [python.org](https://python.org) — tick *Add to PATH* |
 | reading TypeScript, JavaScript | Node.js **18+** | `sudo apt install nodejs` | [nodejs.org](https://nodejs.org) |
 | reading PHP | PHP **8.0+** | `sudo apt install php-cli composer` | [windows.php.net](https://windows.php.net/download) |
 

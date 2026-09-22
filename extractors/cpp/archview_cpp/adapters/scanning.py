@@ -162,6 +162,7 @@ class _Walk:
         self._with_source = with_source
         self._scopes: list[_Scope] = []
         self._found: list[Declaration] = []
+        self._parentheses = 0
 
     def declarations(self) -> list[Declaration]:
         """Walks the tokens and returns what was declared."""
@@ -181,6 +182,15 @@ class _Walk:
                     self._close(token)
                     index += 1
                     continue
+
+                # A parameter list is not the class body. Counting what is
+                # inside one made `SerialSensor(int address, …)` contribute
+                # a member called `address`, which belongs to the method and
+                # not to the type.
+                if token.text == "(":
+                    self._parentheses += 1
+                elif token.text == ")":
+                    self._parentheses = max(0, self._parentheses - 1)
 
             if token.kind is not TokenKind.IDENTIFIER:
                 index += 1
@@ -397,7 +407,7 @@ class _Walk:
         list is a method, one that ends a statement is a field. A type's
         members are shown as its own text shows them.
         """
-        if not self._scopes or not self._scopes[-1].is_type:
+        if self._parentheses or not self._scopes or not self._scopes[-1].is_type:
             return
 
         pending = self._scopes[-1].declaration
@@ -420,16 +430,52 @@ class _Walk:
             return
 
         if following.text in (";", "=", "[", ","):
-            previous = self._tokens[index - 1] if index else None
-
-            # A field is named after its type; a bare identifier ending a
+            # A field is named after its type, with pointers, references
+            # and qualifiers between the two; a bare identifier ending a
             # statement is usually an enumerator, which is a member too.
-            if previous is not None and previous.kind is TokenKind.IDENTIFIER:
-                pending.members.append(
-                    {"text": f"{previous.text} {token.text}", "line": token.line}
-                )
-            else:
-                pending.members.append({"text": token.text, "line": token.line})
+            written = self._type_before(index)
+
+            pending.members.append(
+                {
+                    "text": f"{written} {token.text}" if written else token.text,
+                    "line": token.line,
+                }
+            )
+
+    def _type_before(self, index: int) -> str:
+        """The type written before a field's name, as the source writes it."""
+        parts: list[str] = []
+        scan = index - 1
+
+        while scan >= 0 and len(parts) < 6:
+            token = self._tokens[scan]
+
+            if token.kind is TokenKind.IDENTIFIER:
+                if token.text in ("public", "private", "protected"):
+                    break
+
+                parts.append(token.text)
+                scan -= 1
+                continue
+
+            if token.kind is TokenKind.PUNCTUATION and token.text in ("*", "&", "<", ">"):
+                parts.append(token.text)
+                scan -= 1
+                continue
+
+            # A single colon ends an access specifier — `private:` — and is
+            # not part of the type. A doubled one qualifies a name and is.
+            if token.kind is TokenKind.PUNCTUATION and token.text == ":":
+                if scan > 0 and self._tokens[scan - 1].text == ":":
+                    parts.append("::")
+                    scan -= 2
+                    continue
+
+                break
+
+            break
+
+        return " ".join(reversed(parts)).replace(" :: ", "::").strip()
 
     # -- helpers --------------------------------------------------------
 

@@ -346,6 +346,15 @@ internal static class Everything
                 root));
         }
 
+        if (Holds(root, "*.pas") || Holds(root, "*.dpr") || Holds(root, "*.dpk"))
+        {
+            parts.Add(new Part(
+                "Delphi",
+                Path.Combine(home, "extractors", "delphi", "archview_delphi.py"),
+                new[] { "python3", "python" },
+                root));
+        }
+
         if (Holds(root, "*.sql"))
         {
             parts.Add(new Part(

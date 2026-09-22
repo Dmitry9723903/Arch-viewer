@@ -28,13 +28,13 @@ from archview_cpp.adapters.scanning import TokenDeclarationReader, TokenIncludeR
 from archview_cpp.application.read_repository import ReadRepository
 
 
-def declaration_reader(forced_tokens: bool, with_source: bool):
+def declaration_reader(root: str, forced_tokens: bool, with_source: bool):
     """clang when it is there and wanted, this tool's tokeniser otherwise."""
     if not forced_tokens:
         try:
             from archview_cpp.adapters.clang_reader import ClangDeclarationReader
 
-            reader = ClangDeclarationReader(with_source)
+            reader = ClangDeclarationReader(root, with_source)
 
             if reader.available:
                 return reader
@@ -75,7 +75,7 @@ def main() -> int:
 
     with_source = not arguments.no_source
     projects = VisualStudioProjects(str(root))
-    reader = declaration_reader(arguments.tokens, with_source)
+    reader = declaration_reader(str(root), arguments.tokens, with_source)
 
     use_case = ReadRepository(
         files=DiskFiles(str(root)),
@@ -142,6 +142,17 @@ def report(reading, projects, reader, out: str) -> None:
 
         for example in reading.unresolved_examples:
             print(f"  {example}")
+
+    errors = getattr(reader, "files_with_errors", 0)
+
+    if errors:
+        print()
+        print(
+            f"{errors} files did not parse cleanly "
+            f"({getattr(reader, 'errors', 0)} errors). clang recovers rather "
+            "than stopping, so a base class it could not resolve is absent "
+            "and a member of an unknown type is reported as int."
+        )
 
     directives = getattr(reader, "directives", 0)
 

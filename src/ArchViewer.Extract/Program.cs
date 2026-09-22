@@ -309,6 +309,7 @@ public static class Program
         ("C++", "*.cpp"),
         ("C", "*.c"),
         ("SQL", "*.sql"),
+        ("Delphi", "*.pas"),
         ("Java", "*.java"),
         ("Go", "*.go"),
         ("Rust", "*.rs"),

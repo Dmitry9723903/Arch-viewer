@@ -16,6 +16,10 @@ absence this tool refuses to leave silent.
 
 from __future__ import annotations
 
+import ctypes.util
+import glob
+import os
+
 from ..domain.model import Declaration, DeclarationKind, SourcePath, Span
 from .scanning import _MFC_STEREOTYPES
 
@@ -37,13 +41,23 @@ _KINDS: dict[str, DeclarationKind] = {
 class ClangDeclarationReader:
     """Reads declarations with clang."""
 
-    def __init__(self, with_source: bool = True) -> None:
+    def __init__(self, root: str, with_source: bool = True) -> None:
+        self._root = root
         self._with_source = with_source
         self._index = None
         self.errors = 0
         self.files_with_errors = 0
 
         if cindex is not None:
+            library = _libclang()
+
+            if library is not None:
+                try:
+                    cindex.Config.set_library_file(library)
+                except Exception:
+                    # Already configured by something else in this process.
+                    pass
+
             try:
                 self._index = cindex.Index.create()
             except Exception:
@@ -66,6 +80,18 @@ class ClangDeclarationReader:
         if self._index is None:
             return []
 
+        # The absolute path, not the repository-relative one. A relative
+        # name is resolved against this process's working directory, which
+        # is wherever the tool was started; the file itself still arrives
+        # through unsaved_files, so it parses — and every `#include "…"`
+        # beside it is then looked for in the wrong place and not found.
+        #
+        # clang recovers from that instead of failing: an unresolved base
+        # class simply disappears, and a field of an unknown type becomes
+        # `int`. The map then shows a member type nobody measured, which is
+        # worse than showing none.
+        full = os.path.join(self._root, path.value)
+
         arguments = [
             "-x",
             "c++" if not path.value.lower().endswith(".c") else "c",
@@ -76,9 +102,9 @@ class ClangDeclarationReader:
 
         try:
             unit = self._index.parse(
-                path.value,
+                full,
                 args=arguments,
-                unsaved_files=[(path.value, text)],
+                unsaved_files=[(full, text)],
                 options=(
                     cindex.TranslationUnit.PARSE_SKIP_FUNCTION_BODIES
                     | cindex.TranslationUnit.PARSE_INCOMPLETE
@@ -98,10 +124,12 @@ class ClangDeclarationReader:
 
         lines = text.splitlines()
         found: list[Declaration] = []
-        self._collect(unit.cursor, path, lines, found)
+        self._collect(unit.cursor, path, full, lines, found)
         return found
 
-    def _collect(self, cursor, path: SourcePath, lines: list[str], into: list) -> None:
+    def _collect(
+        self, cursor, path: SourcePath, full: str, lines: list[str], into: list
+    ) -> None:
         """Walks the tree, keeping definitions written in this very file."""
         for child in cursor.get_children():
             location = child.location
@@ -109,7 +137,7 @@ class ClangDeclarationReader:
             # A header pulled in by this file is that header's business, and
             # counting its declarations here would file them under whichever
             # module happened to include it first.
-            if location.file is None or location.file.name != path.value:
+            if location.file is None or location.file.name != full:
                 continue
 
             kind = _KINDS.get(child.kind.name)
@@ -118,7 +146,7 @@ class ClangDeclarationReader:
                 into.append(self._declaration(child, kind, path, lines))
                 continue
 
-            self._collect(child, path, lines, into)
+            self._collect(child, path, full, lines, into)
 
     def _declaration(self, cursor, kind, path: SourcePath, lines: list[str]):
         """One declaration, with its bases and members."""
@@ -176,6 +204,43 @@ class ClangDeclarationReader:
             text += f"\n… {last - first + 1 - limit} more lines"
 
         return text
+
+
+def _libclang() -> str | None:
+    """Where libclang is, when the bindings will not find it themselves.
+
+    The bindings load `libclang.so`, which is the developer package's name.
+    A machine that merely runs LLVM has `libclang.so.1` and nothing else, so
+    the bindings report no clang on a machine that has it — and this tool
+    would quietly fall back to its own reader and say clang was unavailable.
+    A stated path, then the loader's own answer, then the usual places.
+    """
+    named = os.environ.get("ARCHVIEW_LIBCLANG")
+
+    if named and os.path.exists(named):
+        return named
+
+    found = ctypes.util.find_library("clang")
+
+    if found:
+        return found
+
+    patterns = (
+        "/usr/lib/llvm-*/lib/libclang.so*",
+        "/usr/lib/x86_64-linux-gnu/libclang*.so*",
+        "/usr/lib64/libclang.so*",
+        "/usr/local/lib/libclang.so*",
+        "/opt/homebrew/opt/llvm/lib/libclang.dylib",
+        "/usr/lib/llvm-*/lib/libclang.dylib",
+    )
+
+    for pattern in patterns:
+        matches = sorted(glob.glob(pattern))
+
+        if matches:
+            return matches[-1]
+
+    return None
 
 
 def _qualifier(cursor) -> str:
