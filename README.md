@@ -115,6 +115,25 @@ an extractor that emits the same model file — the viewer is not touched.
 That is the design's one real test: if a differently organised repository
 cannot be rendered without changing the viewer, the separation is not there.
 
+## More than one language
+
+The viewer knows no language — it nests containers, expands them and draws
+arrows between whatever the model names. An ecosystem is supported by writing
+an extractor that emits the same model file, in that language and with that
+language's own parser.
+
+| Ecosystem | Extractor | Dependencies |
+|---|---|---|
+| .NET | `src/ArchViewer.Extract` | one, from Microsoft |
+| Python | `extractors/python` | none — `ast` ships with the language |
+
+```bash
+python3 extractors/python/archview_python.py <repository> --out arch.html
+```
+
+Proven on a Django repository of 442 modules and 425 classes: **the viewer was
+not changed by a single line** to draw it.
+
 ## Running it
 
 ```bash

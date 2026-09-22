@@ -259,6 +259,12 @@ rather than a limit of the tool.
 Supporting such an area means writing an extractor for it that emits the same
 model file. The viewer needs no changes: it has never known a language.
 
+An extractor is written in the language it reads, with that language's own
+parser — `ast` for Python, the compiler API for TypeScript. This is not a
+preference: a pattern over text mishandles the ordinary constructs of every
+language and fails silently, which is how a map comes to be confidently wrong.
+`extractors/` holds them; the Python one is there.
+
 #### What this does not see
 
 Named here because an assumption left unwritten is how the reader is misled.
