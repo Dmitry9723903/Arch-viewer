@@ -16,6 +16,7 @@ public static class Program
         if (args.Length == 0 || args[0] is "-h" or "--help")
         {
             Console.WriteLine("usage: archview <repository> [--policy <file>] [--out <file.html>] [--no-types]");
+            Console.WriteLine("       archview all <repository> [--out <file.html>] [--title <name>] [--policy <file>] [--no-build]");
             Console.WriteLine("       archview merge <model.json> … [--out <file.html>] [--title <name>]");
             return args.Length == 0 ? 1 : 0;
         }
@@ -23,6 +24,22 @@ public static class Program
         if (args[0] == "merge")
         {
             return Joined(args);
+        }
+
+        if (args[0] == "all")
+        {
+            if (args.Length < 2)
+            {
+                Console.Error.WriteLine("all needs a repository to read.");
+                return 1;
+            }
+
+            return Everything.Read(
+                Path.GetFullPath(args[1]),
+                Option(args, "--out") ?? Path.Combine(Environment.CurrentDirectory, "arch.html"),
+                Option(args, "--title"),
+                Option(args, "--policy"),
+                build: !args.Contains("--no-build"));
         }
 
         var root = Path.GetFullPath(args[0]);
@@ -38,6 +55,15 @@ public static class Program
         var withTypes = !args.Contains("--no-types");
 
         var policy = Policy.Load(policyPath, root);
+
+        // A name given on the command line wins over the policy's, so a
+        // caller joining several models can name each part by its ecosystem
+        // rather than have every one of them carry the repository's name.
+        if (Option(args, "--title") is { Length: > 0 } named)
+        {
+            policy.Title = named;
+        }
+
         var projects = ProjectReader.Read(root, policy);
 
         if (projects.Count == 0)
@@ -69,7 +95,7 @@ public static class Program
         File.WriteAllText(outPath, Page(json));
 
         Report(model, projects.Count, facts.Known.Count, outPath, facts);
-        ReportUnread(root, policy, projects);
+        ReportUnread(root, policy, projects, Option(args, "--covered"));
         return 0;
     }
 
@@ -169,11 +195,26 @@ public static class Program
     /// listing but not on the screen has no way to tell whether it was
     /// skipped or lost. Saying so is the difference.
     /// </summary>
+    /// <summary>
+    /// Names the areas of the repository this run did not read.
+    /// <para>
+    /// <paramref name="covered"/> lists the languages another extractor in
+    /// the same run will read. Without it a single command would announce
+    /// Python as unread and then read it a second later, which is worse than
+    /// saying nothing: a report that contradicts the run teaches the reader
+    /// to stop reading reports.
+    /// </para>
+    /// </summary>
     private static void ReportUnread(
         string root,
         Policy policy,
-        IReadOnlyList<ProjectFile> projects)
+        IReadOnlyList<ProjectFile> projects,
+        string? covered = null)
     {
+        var elsewhere = (covered ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         var read = projects
             .Select(p => p.RelativePath.Split('/')[0])
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -193,6 +234,7 @@ public static class Program
             var byPolicy = policy.Exclude.Contains(area, StringComparer.OrdinalIgnoreCase);
 
             var counted = Languages
+                .Where(pair => !elsewhere.Contains(pair.Language))
                 .Select(pair => (pair.Language, Files: CountFiles(directory, pair.Pattern)))
                 .Where(x => x.Files > 0)
                 .OrderByDescending(x => x.Files)
@@ -209,7 +251,9 @@ public static class Program
         if (unread.Count > 0)
         {
             Console.WriteLine();
-            Console.WriteLine("Not read — this extractor knows .NET projects only:");
+            Console.WriteLine(elsewhere.Count > 0
+                ? "Not read — no extractor here reads these:"
+                : "Not read — this extractor knows .NET projects only:");
 
             foreach (var (area, language, files) in unread.OrderBy(x => x.Area, StringComparer.Ordinal))
             {
@@ -232,6 +276,7 @@ public static class Program
     private static readonly (string Language, string Pattern)[] Languages =
     {
         ("Python", "*.py"),
+        ("PHP", "*.php"),
         ("TypeScript", "*.ts"),
         ("JavaScript", "*.js"),
         ("C++", "*.cpp"),

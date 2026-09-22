@@ -26,43 +26,43 @@ dotnet build src\ArchViewer.Extract
 
 That builds `archview.dll`. Everything below runs it with `dotnet`.
 
-## Reading a .NET repository
+## Reading a repository
+
+One command. It finds which languages the repository holds, builds its .NET
+code, runs the extractors that apply, and joins everything into one page:
 
 ```powershell
-dotnet build C:\path\to\YourSolution.sln
-dotnet src\ArchViewer.Extract\bin\Debug\net10.0\archview.dll C:\path\to\repo --out arch.html
+dotnet src\ArchViewer.Extract\bin\Debug\net10.0\archview.dll all C:\path\to\repo --out arch.html
 ```
 
 Open `arch.html` in a browser. **Not in an editor** — it is a web page, and an
 editor shows you its source.
 
-Build the solution first. Types, members and jump-to-source come from compiled
-assemblies and their PDBs; without a build you get the graph and nothing
-inside it.
+The run prints a section per language. One whose runtime is not installed is
+named with that reason and left out, so a missing map always has a stated
+cause. If you already built the solution yourself, `--no-build` skips that
+step.
 
-## Reading the other languages
+The TypeScript extractor uses the compiler from the repository you point it
+at, so `npm install` there first if you want the client read. The PHP one uses
+`nikic/PHP-Parser` when composer has installed it, and the language's own
+tokeniser otherwise — both read, neither required.
 
-```powershell
-python  extractors\python\archview_python.py C:\path\to\repo --out arch.html
-node    extractors\typescript\archview-ts.mjs C:\path\to\repo --out arch.html
-php     extractors\php\archview-php.php C:\path\to\repo --out arch.html
-```
+## Reading one language at a time
 
-The TypeScript one uses the compiler from the repository you point it at, so
-run `npm install` there first. The PHP one uses `nikic/PHP-Parser` if composer
-has installed it, and the language's own tokeniser otherwise.
-
-## One repository, one map
-
-A solution with a TypeScript client is two extractions; `merge` makes them one
-page:
+`all` calls these for you; each also runs on its own.
 
 ```powershell
 $av = "src\ArchViewer.Extract\bin\Debug\net10.0\archview.dll"
 dotnet $av C:\path\to\repo --out dotnet.html
-node extractors\typescript\archview-ts.mjs C:\path\to\repo\client --out client.html --title "client"
-dotnet $av merge dotnet.json client.json --out arch.html --title "MyRepo"
+python  extractors\python\archview_python.py C:\path\to\repo --out python.html
+node    extractors\typescript\archview-ts.mjs C:\path\to\repo --out client.html
+php     extractors\php\archview-php.php C:\path\to\repo --out php.html
+dotnet $av merge dotnet.json python.json --out arch.html --title "MyRepo"
 ```
+
+Without `all`, build the solution first: types, members and jump-to-source
+come from compiled assemblies and their PDBs.
 
 ## If something looks wrong
 

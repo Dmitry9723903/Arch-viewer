@@ -1,0 +1,401 @@
+using System.Diagnostics;
+
+namespace ArchViewer.Extract;
+
+/// <summary>
+/// Reads a whole repository — every ecosystem in it — and joins the result
+/// into one map.
+/// <para>
+/// Each language is read by its own extractor, which is right, and left the
+/// person running it to find out which languages are present, call three or
+/// four programs by hand and merge the outputs. That is a thing to do once
+/// and resent thereafter. This finds what is there, runs what is needed and
+/// joins the parts.
+/// </para>
+/// <para>
+/// What it will not do is hide a gap. An ecosystem present but unreadable —
+/// no interpreter, no compiler in the project — is named with the reason, not
+/// silently dropped.
+/// </para>
+/// </summary>
+internal static class Everything
+{
+    /// <summary>One ecosystem found in a repository.</summary>
+    private sealed record Part(string Name, string Extractor, string[] Runners, string Argument);
+
+    /// <summary>
+    /// Finds every ecosystem, reads each, and writes one page.
+    /// </summary>
+    /// <param name="root">Repository to read.</param>
+    /// <param name="outPath">Page to write.</param>
+    /// <param name="title">Name for the whole.</param>
+    /// <param name="policy">Policy for the .NET part, when there is one.</param>
+    /// <returns>Zero when a page was written.</returns>
+    public static int Read(string root, string outPath, string? title, string? policy, bool build)
+    {
+        var tools = Path.GetDirectoryName(typeof(Everything).Assembly.Location);
+        var home = Home(tools);
+
+        if (home is null)
+        {
+            Console.Error.WriteLine("Cannot find the extractors directory beside this tool.");
+            return 1;
+        }
+
+        var work = Directory.CreateTempSubdirectory("archview");
+        var models = new List<string>();
+        var skipped = new List<string>();
+
+        try
+        {
+            // Found before the .NET pass runs, so that pass can be told which
+            // languages are covered and not name them as unread.
+            var others = Others(root, home).ToList();
+
+            if (Directory.EnumerateFiles(root, "*.csproj", SearchOption.AllDirectories).Any())
+            {
+                var model = Path.Combine(work.FullName, "dotnet.json");
+                Console.WriteLine("== .NET ==");
+
+                // The .NET extractor reads compiled assemblies, so a
+                // repository that has never been built holds nothing for it
+                // to read. Leaving the build to the person turns one command
+                // back into two, and the second one is the one they forget —
+                // after which the map is empty for a reason nothing states.
+                if (build)
+                {
+                    Build(root);
+                }
+
+                var arguments = new List<string>
+                {
+                    root, "--out", Path.ChangeExtension(model, ".html"), "--title", ".NET",
+                };
+
+                if (others.Count > 0)
+                {
+                    arguments.Add("--covered");
+                    arguments.Add(string.Join(',', others.Select(part => part.Name)));
+                }
+
+                if (policy is not null)
+                {
+                    arguments.Add("--policy");
+                    arguments.Add(policy);
+                }
+
+                if (Program.Main(arguments.ToArray()) == 0 && File.Exists(model))
+                {
+                    models.Add(model);
+                }
+            }
+
+            foreach (var part in others)
+            {
+                Console.WriteLine();
+                Console.WriteLine($"== {part.Name} ==");
+
+                var runner = part.Runners.FirstOrDefault(Available);
+
+                if (runner is null)
+                {
+                    var names = string.Join(" or ", part.Runners);
+                    skipped.Add($"{part.Name} — {names} is not installed");
+                    Console.WriteLine($"  skipped: {names} is not installed");
+                    continue;
+                }
+
+                var page = Path.Combine(work.FullName, $"{part.Name.ToLowerInvariant()}.html");
+                var model = Path.ChangeExtension(page, ".json");
+
+                if (Run(runner, part.Extractor, part.Argument, page, part.Name) && File.Exists(model))
+                {
+                    models.Add(model);
+                }
+                else
+                {
+                    skipped.Add($"{part.Name} — its extractor did not finish");
+                }
+            }
+
+            if (models.Count == 0)
+            {
+                Console.Error.WriteLine("Nothing could be read.");
+                return 1;
+            }
+
+            Console.WriteLine();
+            Console.WriteLine(models.Count == 1 ? "== one part, no merge needed ==" : "== joining ==");
+
+            var merged = models.Count == 1
+                ? models[0]
+                : null;
+
+            if (merged is not null)
+            {
+                File.Copy(Path.ChangeExtension(merged, ".html"), outPath, overwrite: true);
+                File.Copy(merged, Path.ChangeExtension(outPath, ".json"), overwrite: true);
+            }
+            else
+            {
+                var joined = models.ToList();
+                joined.Insert(0, "merge");
+                joined.Add("--out");
+                joined.Add(outPath);
+
+                if (title is not null)
+                {
+                    joined.Add("--title");
+                    joined.Add(title);
+                }
+
+                if (Program.Main(joined.ToArray()) != 0)
+                {
+                    return 1;
+                }
+            }
+
+            if (skipped.Count > 0)
+            {
+                Console.WriteLine();
+                Console.WriteLine("Left out:");
+
+                foreach (var line in skipped)
+                {
+                    Console.WriteLine($"  {line}");
+                }
+            }
+
+            Console.WriteLine();
+            Console.WriteLine($"Open {outPath} in a browser.");
+            return 0;
+        }
+        finally
+        {
+            try
+            {
+                work.Delete(recursive: true);
+            }
+            catch (IOException)
+            {
+            }
+        }
+    }
+
+    /// <summary>
+    /// The directory holding the extractors: beside the tool, or above its
+    /// build output when run from a clone.
+    /// </summary>
+    private static string? Home(string? from)
+    {
+        var directory = from;
+
+        while (directory is not null)
+        {
+            if (Directory.Exists(Path.Combine(directory, "extractors")))
+            {
+                return directory;
+            }
+
+            directory = Path.GetDirectoryName(directory);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Ecosystems other than .NET that this repository holds, in the order
+    /// they are worth reading.
+    /// </summary>
+    private static IEnumerable<Part> Others(string root, string home)
+    {
+        var parts = new List<Part>();
+
+        if (Holds(root, "*.py"))
+        {
+            parts.Add(new Part(
+                "Python",
+                Path.Combine(home, "extractors", "python", "archview_python.py"),
+                new[] { "python3", "python" },
+                root));
+        }
+
+        if (Holds(root, "*.ts") || Holds(root, "*.tsx") || Holds(root, "*.jsx"))
+        {
+            parts.Add(new Part(
+                "TypeScript",
+                Path.Combine(home, "extractors", "typescript", "archview-ts.mjs"),
+                new[] { "node" },
+                root));
+        }
+
+        if (Holds(root, "*.php"))
+        {
+            parts.Add(new Part(
+                "PHP",
+                Path.Combine(home, "extractors", "php", "archview-php.php"),
+                new[] { "php" },
+                root));
+        }
+
+        return parts.Where(part => File.Exists(part.Extractor));
+    }
+
+    /// <summary>
+    /// Whether the repository holds files of a kind that are its own, rather
+    /// than somebody else's library vendored into it.
+    /// </summary>
+    private static bool Holds(string root, string pattern)
+    {
+        string[] theirs =
+        {
+            "/node_modules/", "/__pycache__/", "/.venv/", "/venv/", "/env/",
+            "/site-packages/", "/vendor/", "/dist/", "/build/", "/obj/", "/bin/",
+        };
+
+        try
+        {
+            return Directory.EnumerateFiles(root, pattern, SearchOption.AllDirectories)
+                .Select(path => path.Replace('\\', '/'))
+                .Any(path => !theirs.Any(place => path.Contains(place, StringComparison.OrdinalIgnoreCase)));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Builds the repository's .NET code: its solution when it has one,
+    /// otherwise each project. A build that fails is reported and the reading
+    /// goes on with whatever output already exists — an old assembly read and
+    /// named as old beats no map at all.
+    /// </summary>
+    private static void Build(string root)
+    {
+        if (!Available("dotnet"))
+        {
+            Console.WriteLine("  not built: dotnet is not installed, reading whatever output is there");
+            return;
+        }
+
+        var solutions = Directory.EnumerateFiles(root, "*.sln", SearchOption.AllDirectories)
+            .Concat(Directory.EnumerateFiles(root, "*.slnx", SearchOption.AllDirectories))
+            .OrderBy(path => path.Count(c => c == Path.DirectorySeparatorChar))
+            .ToList();
+
+        var targets = solutions.Count > 0
+            ? new List<string> { solutions[0] }
+            : Directory.EnumerateFiles(root, "*.csproj", SearchOption.AllDirectories).ToList();
+
+        foreach (var target in targets)
+        {
+            var name = Path.GetRelativePath(root, target).Replace('\\', '/');
+            Console.WriteLine($"  building {name}");
+
+            var info = new ProcessStartInfo("dotnet")
+            {
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                WorkingDirectory = root,
+            };
+
+            info.ArgumentList.Add("build");
+            info.ArgumentList.Add(target);
+            info.ArgumentList.Add("--nologo");
+            info.ArgumentList.Add("-v");
+            info.ArgumentList.Add("q");
+
+            try
+            {
+                using var process = Process.Start(info);
+
+                if (process is null)
+                {
+                    continue;
+                }
+
+                var errors = process.StandardOutput.ReadToEnd()
+                    .Split('\n')
+                    .Where(line => line.Contains(" error ", StringComparison.Ordinal))
+                    .Take(3)
+                    .ToList();
+
+                process.WaitForExit();
+
+                if (process.ExitCode == 0)
+                {
+                    continue;
+                }
+
+                Console.WriteLine($"  build failed ({name}), reading whatever output is there:");
+
+                foreach (var line in errors)
+                {
+                    Console.WriteLine($"    {line.Trim()}");
+                }
+            }
+            catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
+            {
+                Console.WriteLine($"  could not run the build for {name}");
+            }
+        }
+    }
+
+    private static bool Available(string runner)
+    {
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo(runner, "--version")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            });
+
+            if (process is null)
+            {
+                return false;
+            }
+
+            process.WaitForExit(10_000);
+            return process.ExitCode == 0;
+        }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    private static bool Run(string runner, string extractor, string argument, string page, string title)
+    {
+        var info = new ProcessStartInfo(runner)
+        {
+            UseShellExecute = false,
+        };
+
+        info.ArgumentList.Add(extractor);
+        info.ArgumentList.Add(argument);
+        info.ArgumentList.Add("--out");
+        info.ArgumentList.Add(page);
+        info.ArgumentList.Add("--title");
+        info.ArgumentList.Add(title);
+
+        try
+        {
+            using var process = Process.Start(info);
+
+            if (process is null)
+            {
+                return false;
+            }
+
+            process.WaitForExit();
+            return process.ExitCode == 0;
+        }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+}

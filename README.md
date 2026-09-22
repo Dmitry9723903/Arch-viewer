@@ -135,19 +135,25 @@ language's own parser.
 | TypeScript, JavaScript | `extractors/typescript` | none — the target repository's own compiler is used |
 | PHP | `extractors/php` | none required; uses `nikic/PHP-Parser` when it is there |
 
+**One repository, one map, one command.** `all` finds which of these
+ecosystems a repository actually holds, builds its .NET code, runs the
+extractors that apply, and joins the results into a single page:
+
+```bash
+archview all <repository> --out arch.html
+```
+
+An ecosystem whose runtime is missing is named with the reason and left out;
+it is never silently dropped. `--no-build` skips building the .NET part.
+
+The extractors are also usable one at a time, which is what `all` does for
+you:
+
 ```bash
 python3 extractors/python/archview_python.py <repository> --out arch.html
 node     extractors/typescript/archview-ts.mjs <repository> --out arch.html
 php      extractors/php/archview-php.php <repository> --out arch.html
-```
-
-**One repository, one map.** A .NET solution with a TypeScript client is two
-extractions and would be two pages; `merge` makes them one:
-
-```bash
-archview <repo> --out dotnet.html
-node extractors/typescript/archview-ts.mjs <repo>/client --out client.html --title "client"
-archview merge dotnet.json client.json --out arch.html --title "<repo>"
+archview merge a.json b.json --out arch.html --title "<repo>"
 ```
 
 Each part keeps its own container and its own kinds. They are not blended: a
@@ -164,8 +170,11 @@ On Windows, see [docs/WINDOWS.md](docs/WINDOWS.md).
 
 ```bash
 dotnet build src/ArchViewer.Extract/ArchViewer.Extract.csproj
-dotnet src/ArchViewer.Extract/bin/Debug/net10.0/archview.dll <repository> --out arch.html
+dotnet src/ArchViewer.Extract/bin/Debug/net10.0/archview.dll all <repository> --out arch.html
 ```
+
+That one command reads everything in the repository it can read. Drop the
+`all` to read only its .NET projects, without building them.
 
 Open `arch.html`. It is one self-contained file with the model embedded, so
 it works from disk with no server.
@@ -176,12 +185,13 @@ project names, and the page says types are missing rather than pretending
 there are none.
 
 Put a policy at `<repository>/.arch-viewer/policy.json`, or pass `--policy`.
-With no policy at all, projects are grouped by their top-level directory.
+With no policy at all, projects are grouped by their top-level directory and
+types by their namespace, with the references between them.
 
 Try it on the bundled example:
 
 ```bash
-dotnet src/ArchViewer.Extract/bin/Debug/net10.0/archview.dll examples/solution --out example.html
+dotnet src/ArchViewer.Extract/bin/Debug/net10.0/archview.dll all examples/solution --out example.html
 ```
 
 Six projects, eight references, one nested namespace in each domain, and

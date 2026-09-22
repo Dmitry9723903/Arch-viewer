@@ -9,7 +9,7 @@ namespace ArchViewer.Extract;
 public sealed class Policy
 {
     /// <summary>Name shown on screen.</summary>
-    public string Title { get; init; } = "";
+    public string Title { get; set; } = "";
 
     /// <summary>Glob fragments of paths to skip entirely.</summary>
     public IReadOnlyList<string> Exclude { get; init; } = new[] { "artifacts", "bin", "obj", "node_modules" };
@@ -69,10 +69,20 @@ public sealed class Policy
         // the project's own folder, so every project became a container of
         // exactly itself. A grouping that groups nothing is worse than none,
         // because it looks like an answer.
+        // Types are read by default too, grouped by namespace, with the
+        // references between them.
+        //
+        // Without them the default map is projects and the references
+        // between projects — five boxes and seven arrows for four hundred
+        // and fifty types. Every extractor here other than the .NET one
+        // shows types without being asked, so a repository read with no
+        // policy at all looked emptier the more C# it held. A policy can
+        // still turn this off; nothing can turn it on that is not written.
         return new Policy
         {
             Title = new DirectoryInfo(root).Name,
             Group = new[] { new GroupRule { Kind = "folder", From = "path-segment", Index = 0 } },
+            Types = new TypeGrouping { By = "namespace", Edges = true },
         };
     }
 }

@@ -24,6 +24,25 @@ modified for them — see [Planned order](#planned-order).
 
 The model file is the only contract between extractor and viewer.
 
+### The one command is a fourth part, and knows nothing either
+
+`archview all <repository>` finds which ecosystems a repository holds, builds
+its .NET code, runs the extractors that apply and merges the models. It is
+deliberately thin: it decides *which* extractors to run, never *how* any of
+them reads anything, and it gains nothing by knowing a language.
+
+Three properties it must keep:
+
+- **It never invents coverage.** An ecosystem present but unreadable — a
+  missing interpreter, an extractor that failed — is printed with the reason.
+  Silence about a gap is the failure mode this whole tool exists to avoid.
+- **It never contradicts itself.** The .NET pass reports the areas it did not
+  read; when Python or PHP is about to be read by another pass, those areas
+  are not named as unread. A report that disagrees with its own run teaches
+  the reader to stop reading reports.
+- **It is not the only way in.** Each extractor stays runnable alone, which is
+  what keeps this part from accumulating language knowledge.
+
 ---
 
 ## Decisions
