@@ -141,6 +141,20 @@ node     extractors/typescript/archview-ts.mjs <repository> --out arch.html
 php      extractors/php/archview-php.php <repository> --out arch.html
 ```
 
+**One repository, one map.** A .NET solution with a TypeScript client is two
+extractions and would be two pages; `merge` makes them one:
+
+```bash
+archview <repo> --out dotnet.html
+node extractors/typescript/archview-ts.mjs <repo>/client --out client.html --title "client"
+archview merge dotnet.json client.json --out arch.html --title "<repo>"
+```
+
+Each part keeps its own container and its own kinds. They are not blended: a
+namespace of one ecosystem and a folder of another are different things, and
+putting them on one row unlabelled is a mistake this repository has made once
+and written down.
+
 Proven on a Django repository of 442 modules and 425 classes: **the viewer was
 not changed by a single line** to draw it.
 

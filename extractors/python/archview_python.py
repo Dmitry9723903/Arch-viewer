@@ -172,7 +172,31 @@ def read_module(root: Path, path: Path) -> Module | None:
                 for alias in node.names:
                     module.imports.add(f"{target}.{alias.name}")
 
+    # Functions declared at module level are types of the map too. In a
+    # language where most code lives outside classes — a test suite of `def
+    # test_…`, a module of helpers — showing only classes shows a module as
+    # empty when it is not.
     for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            start = min([node.lineno] + [d.lineno for d in node.decorator_list])
+            end = node.end_lineno or start
+            args = ", ".join(a.arg for a in node.args.args)
+            returns = f" -> {ast.unparse(node.returns)}" if node.returns else ""
+            module.classes.append(
+                TypeNode(
+                    id=f"{dotted}.{node.name}" if dotted else node.name,
+                    name=node.name,
+                    stereotype="function",
+                    visibility=visibility(node.name),
+                    file=relative,
+                    line=start,
+                    end_line=end,
+                    source=fragment(lines, start, end),
+                    members=[{"text": f"({args}){returns}", "line": node.lineno}],
+                )
+            )
+            continue
+
         if not isinstance(node, ast.ClassDef):
             continue
         start = min(
@@ -368,10 +392,10 @@ def main() -> int:
     elif out.suffix == ".html":
         print(f"No viewer at {viewer}; wrote the model only.", file=sys.stderr)
 
-    classes = sum(len(m.classes) for m in modules)
+    declared = sum(len(m.classes) for m in modules)
     print(f"files      {len(files)}")
     print(f"modules    {len(modules)} read")
-    print(f"classes    {classes}")
+    print(f"types      {declared}")
     print(f"edges      {len(model['edges'])}")
     print(f"written    {arguments.out}")
 

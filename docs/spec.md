@@ -259,6 +259,11 @@ rather than a limit of the tool.
 Supporting such an area means writing an extractor for it that emits the same
 model file. The viewer needs no changes: it has never known a language.
 
+Models from several extractors are joined by `archview merge`, each becoming a
+container named by its title. Joining is not blending: the parts keep their
+own kinds, because a namespace and a folder are different things and a row
+that mixes them unlabelled tells the reader nothing.
+
 An extractor is written in the language it reads, with that language's own
 parser — `ast` for Python, the compiler API for TypeScript. This is not a
 preference: a pattern over text mishandles the ordinary constructs of every

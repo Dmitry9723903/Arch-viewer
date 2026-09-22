@@ -17,6 +17,7 @@ library.
 | packages, nested | directories holding `__init__.py` |
 | modules | files |
 | classes | `class` statements, with their decorators and docstring |
+| functions | `def` and `async def` at module level |
 | `dependency` edges | `import` and `from … import`, resolved to modules of this repository |
 | `inheritance` edges | base classes, when the name belongs to exactly one class here |
 
@@ -27,8 +28,13 @@ enum, one deriving from `Protocol` or `ABC` an interface, one decorated
 
 ## What it does not read
 
-**Function-level structure.** Modules and classes are the containers; a
-module of free functions shows as a module with no types, which is true.
+**Functions inside classes and inside functions.** Only what a module
+declares at its top level. A method belongs to its class and is listed among
+its members; a closure belongs to nobody.
+
+Module-level functions *are* read, and must be: in a language where most code
+lives outside classes, showing only classes showed a pytest suite of 144 tests
+as thirteen empty modules.
 
 **Dynamic imports.** `importlib.import_module(name)` computes its target at
 run time, and no reading of the text can know it.

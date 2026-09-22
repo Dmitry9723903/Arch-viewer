@@ -16,7 +16,13 @@ public static class Program
         if (args.Length == 0 || args[0] is "-h" or "--help")
         {
             Console.WriteLine("usage: archview <repository> [--policy <file>] [--out <file.html>] [--no-types]");
+            Console.WriteLine("       archview merge <model.json> … [--out <file.html>] [--title <name>]");
             return args.Length == 0 ? 1 : 0;
+        }
+
+        if (args[0] == "merge")
+        {
+            return Joined(args);
         }
 
         var root = Path.GetFullPath(args[0]);
@@ -64,6 +70,42 @@ public static class Program
 
         Report(model, projects.Count, facts.Known.Count, outPath, facts);
         ReportUnread(root, policy, projects);
+        return 0;
+    }
+
+    /// <summary>
+    /// Joins models written by several extractors into one page.
+    /// </summary>
+    private static int Joined(string[] args)
+    {
+        var models = args.Skip(1)
+            .TakeWhile(argument => !argument.StartsWith("--", StringComparison.Ordinal))
+            .ToList();
+
+        if (models.Count == 0)
+        {
+            Console.Error.WriteLine("merge needs model files to join.");
+            return 1;
+        }
+
+        var model = Merge.Read(models, Option(args, "--title"));
+
+        if (model is null)
+        {
+            Console.Error.WriteLine("Nothing could be read.");
+            return 1;
+        }
+
+        var outPath = Option(args, "--out") ?? Path.Combine(Environment.CurrentDirectory, "arch.html");
+        var json = JsonSerializer.Serialize(model, ModelJson.Options);
+
+        File.WriteAllText(Path.ChangeExtension(outPath, ".json"), json);
+        File.WriteAllText(outPath, Page(json));
+
+        Console.WriteLine($"parts      {models.Count}");
+        Console.WriteLine($"types      {Count(model.Nodes)}");
+        Console.WriteLine($"edges      {model.Edges.Count}");
+        Console.WriteLine($"written    {outPath}");
         return 0;
     }
 
@@ -203,10 +245,18 @@ public static class Program
     {
         try
         {
+            // Other people's libraries are not this repository's code, and
+            // counting them turns a note about thirteen files into one about
+            // two thousand. The same places every extractor here skips.
+            string[] theirs =
+            {
+                "/node_modules/", "/__pycache__/", "/dist/", "/build/",
+                "/.venv/", "/venv/", "/env/", "/site-packages/", "/vendor/",
+                "/.tox/", "/.mypy_cache/", "/.pytest_cache/",
+            };
+
             return Directory.EnumerateFiles(directory, pattern, SearchOption.AllDirectories)
-                .Where(f => !f.Contains("/node_modules/", StringComparison.Ordinal)
-                            && !f.Contains("/__pycache__/", StringComparison.Ordinal)
-                            && !f.Contains("/dist/", StringComparison.Ordinal))
+                .Where(f => !theirs.Any(place => f.Contains(place, StringComparison.Ordinal)))
                 .Take(5000)
                 .Count();
         }
