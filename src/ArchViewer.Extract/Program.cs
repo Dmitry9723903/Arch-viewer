@@ -41,8 +41,8 @@ public static class Program
         }
 
         using var facts = withTypes
-            ? AssemblyFacts.Load(root, projects.Select(p => p.Name).ToList())
-            : AssemblyFacts.Load(root, Array.Empty<string>());
+            ? AssemblyFacts.Load(root, projects.Select(p => p.Name).ToList(), policy.Exclude)
+            : AssemblyFacts.Load(root, Array.Empty<string>(), policy.Exclude);
 
         var placements = Grouping.Place(projects, policy, facts);
         var model = Builder.Build(root, policy, placements, facts);

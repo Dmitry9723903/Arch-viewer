@@ -235,7 +235,7 @@ function render() {
 // between containers, not between types, and drawing lines that stand for
 // nothing measured would be decoration.
 function drawTypes(canvas, owner, types) {
-  const W = 190, H = 52, GX = 22, GY = 20;
+  const W = 190, H = 52, GX = 60, GY = 54;
   const cols = Math.max(1, Math.min(6, Math.floor((canvas.clientWidth - 40) / (W + GX)) || 4));
   const rows = Math.ceil(types.length / cols);
   const width = cols * (W + GX) + 40, height = rows * (H + GY) + 40;
@@ -244,10 +244,26 @@ function drawTypes(canvas, owner, types) {
   svg.setAttribute('width', width);
   svg.setAttribute('height', height);
   svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.innerHTML = markers();
+
+  // References between the types drawn here. The model carries them — what a
+  // type inherits, implements and holds — and a reader who has drilled this
+  // far is asking precisely what these boxes have to do with each other. A
+  // type answering that question with an empty canvas answers nothing.
+  const pos = new Map();
+  types.forEach((t, i) => pos.set(t.id, {
+    x: (i % cols) * (W + GX) + 20,
+    y: Math.floor(i / cols) * (H + GY) + 20,
+  }));
+
+  for (const e of MODEL.edges) {
+    if (pos.has(e.from) && pos.has(e.to) && e.from !== e.to) {
+      svg.appendChild(edgePath(pos, e, W, H, state.openType));
+    }
+  }
 
   types.forEach((t, i) => {
-    const x = (i % cols) * (W + GX) + 20;
-    const y = Math.floor(i / cols) * (H + GY) + 20;
+    const { x, y } = pos.get(t.id);
     const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     g.setAttribute('class', 'node type-node' + (state.openType === t.id ? ' sel' : ''));
 
@@ -289,7 +305,7 @@ function markers() {
          `${one('ah', 'var(--accent)')}${one('ai', 'var(--ok)')}</defs>`;
 }
 
-function edgePath(pos, e, W, H) {
+function edgePath(pos, e, W, H, anchor = state.selected) {
   const a = pos.get(e.from), b = pos.get(e.to);
   const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   const x1 = a.x + W / 2, y1 = a.y + H / 2, x2 = b.x + W / 2, y2 = b.y + H / 2;
@@ -298,9 +314,9 @@ function edgePath(pos, e, W, H) {
 
   // With a box selected the rest of the mesh is noise: what it reaches and
   // what reaches it are the two questions a dependency graph is asked.
-  const out = state.selected === e.from;
-  const into = state.selected === e.to;
-  const dim = state.selected && !out && !into;
+  const out = anchor === e.from;
+  const into = anchor === e.to;
+  const dim = anchor && !out && !into;
 
   p.setAttribute('class', 'edge'
     + (e.violates ? ' bad' : '')

@@ -20,6 +20,12 @@ public sealed class AssemblyFacts : IDisposable
     private readonly Dictionary<string, SourceIndex> _sources = new(StringComparer.Ordinal);
     private readonly string _root;
 
+    /// <summary>
+    /// What the repository's own text says. A PDB answers neither "where is
+    /// this enum" nor "where does this class end", and both are in the text.
+    /// </summary>
+    private SourceText? _text;
+
     private AssemblyFacts(string root, MetadataLoadContext? context)
     {
         _root = root;
@@ -44,7 +50,10 @@ public sealed class AssemblyFacts : IDisposable
     /// <summary>
     /// Finds built assemblies under the repository and opens them for reading.
     /// </summary>
-    public static AssemblyFacts Load(string root, IReadOnlyList<string> wanted)
+    public static AssemblyFacts Load(
+        string root,
+        IReadOnlyList<string> wanted,
+        IReadOnlyList<string>? exclude = null)
     {
         var binaries = FindBinaries(root, wanted, out var everything, out var passedOver);
 
@@ -91,6 +100,10 @@ public sealed class AssemblyFacts : IDisposable
                 .DefaultIfEmpty(DateTime.MinValue)
                 .Min(),
         };
+
+        facts._text = SourceText.Scan(
+            root,
+            exclude ?? new[] { "bin", "obj", "artifacts", "node_modules" });
 
         foreach (var (name, path) in binaries)
         {
@@ -199,9 +212,13 @@ public sealed class AssemblyFacts : IDisposable
 
             try
             {
+                // The PDB names the file — which matters for a partial type,
+                // where the build knows which part carried the code. Where it
+                // says nothing, the text still does.
                 var location = source?.Locate(type);
-                var fragment = location is { } at && source is not null
-                    ? source.Fragment(at.File, at.First, at.Last, type.Name)
+                var declared = _text?.Find(type.Namespace, type.Name, location?.File);
+                var fragment = declared is { } at
+                    ? _text!.Fragment(at, source?.Built ?? DateTime.MinValue)
                     : null;
 
                 types.Add(new TypeNode
@@ -210,9 +227,9 @@ public sealed class AssemblyFacts : IDisposable
                     Name = Pretty(type.Name),
                     Stereotype = Stereotype(type),
                     Visibility = Visibility(type),
-                    File = location?.File,
+                    File = declared?.File ?? location?.File,
                     Line = fragment?.Start ?? location?.First,
-                    EndLine = location?.Last,
+                    EndLine = fragment?.End ?? location?.Last,
                     Source = fragment?.Text,
                     Members = Members(type),
                 });
@@ -796,6 +813,9 @@ internal sealed class SourceIndex : IDisposable
         _reader = reader;
         _built = built;
     }
+
+    /// <summary>When the assembly this index belongs to was built.</summary>
+    public DateTime Built => _built;
 
     /// <summary>Opens the PDB beside an assembly, or returns an index that knows nothing.</summary>
     public static SourceIndex Open(string assemblyPath, string root)
