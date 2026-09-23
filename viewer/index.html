@@ -78,6 +78,10 @@
   .code .cm { color: var(--dim); font-style: italic; }
   .code .st { color: var(--ok); }
   .nocode { color: var(--dim); font-size: 12px; padding: 6px 0; }
+  .toggle { margin: 6px 0 0; font: inherit; font-size: 12px; color: var(--dim);
+    background: none; border: 1px solid var(--line); border-radius: 4px;
+    padding: 3px 8px; cursor: pointer; }
+  .toggle:hover { color: var(--ink); }
   .own-types { color: var(--dim); font-size: 12px; margin: 18px 0 6px 20px;
                text-transform: uppercase; letter-spacing: .06em; }
   .empty { color: var(--dim); }
@@ -117,6 +121,7 @@
   <h1 id="title">Architecture</h1>
   <nav id="crumbs"></nav>
   <div class="counts" id="counts"></div>
+  <button id="toggle-types" class="toggle" type="button"></button>
 </header>
 <main id="main">
   <div id="canvas"></div>
@@ -126,7 +131,7 @@
 <script>
 const MODEL = /*MODEL*/null;
 
-const state = { path: [], selected: null, openType: null };
+const state = { path: [], selected: null, openType: null, types: true };
 
 function childrenAt(path) {
   let list = MODEL.nodes;
@@ -204,11 +209,18 @@ function render() {
   // system of boxes with one set of arrows. Drawn in two passes they had no
   // lines between them, and a type referring to a neighbouring namespace —
   // which is most of what a domain does — looked unconnected.
-  const own = (current && current.types) || [];
+  // Two tiers, and the rule for the lower one is the same rule the whole
+  // screen follows: it shows what *this* container declares, never what its
+  // children declare. A child keeps its own box, and the arrows from the
+  // tier below land on that box — which is what says "there is more inside,
+  // go and look" without drawing five thousand boxes to prove it.
+  const own = state.types ? (current && current.types) || [] : [];
   const boxes = [
     ...nodes.map(n => ({ id: n.id, node: n, type: null })),
     ...own.map(t => ({ id: t.id, node: null, type: t })),
   ];
+
+  renderToggle(current);
 
   if (boxes.length === 0) {
     canvas.innerHTML = '<p class="empty">Nothing here.</p>';
@@ -222,18 +234,33 @@ function render() {
   // boxes with no lines, which reads as a broken drawing rather than as a
   // fact about the code. Say it, and say where the connections went.
   const outward = leaving(boxes);
-  const cols = Math.max(1, Math.min(5, Math.ceil(Math.sqrt(boxes.length))));
   const W = 200, H = 64, GX = 90, GY = 60;
   const pos = new Map();
   const shift = (outward.out.size || outward.into.size) ? 190 : 0;
-  boxes.forEach((b, i) => {
-    const row = Math.floor(i / cols), col = i % cols;
-    pos.set(b.id, { x: col * (W + GX) + 20 + shift, y: row * (H + GY) + 20 });
-  });
-  const rows = Math.ceil(boxes.length / cols);
+
+  // Containers first, then a band of what this container declares. Mixed
+  // into one grid they read as one kind of thing, and they are not: a box
+  // you can enter and a box that is a type do different work.
+  const above = boxes.filter(b => b.node);
+  const below = boxes.filter(b => b.type);
+  const cols = tier => Math.max(1, Math.min(5, Math.ceil(Math.sqrt(tier.length))));
+  const place = (tier, top) => {
+    const c = cols(tier);
+    tier.forEach((b, i) => {
+      pos.set(b.id, {
+        x: (i % c) * (W + GX) + 20 + shift,
+        y: Math.floor(i / c) * (H + GY) + top,
+      });
+    });
+    return top + Math.ceil(tier.length / c) * (H + GY);
+  };
+
+  const afterAbove = above.length ? place(above, 20) : 20;
+  const gap = above.length && below.length ? 40 : 0;
+  const bottom = below.length ? place(below, afterAbove + gap) : afterAbove;
   const margin = (outward.out.size || outward.into.size) ? 190 : 0;
-  const width = cols * (W + GX) + 40 + margin * 2;
-  const height = Math.max(rows * (H + GY) + 40, 24 + 6 * 30 + 20);
+  const width = Math.max(cols(above), cols(below)) * (W + GX) + 40 + margin * 2;
+  const height = Math.max(bottom + 20, 24 + 6 * 30 + 20);
 
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('width', width);
@@ -462,6 +489,29 @@ function renderCrumbs() {
   });
 }
 
+// The toggle says what it will do and what it is hiding, because a control
+// that only says "types" leaves the reader to discover the difference by
+// pressing it.
+function renderToggle(current) {
+  const button = document.getElementById('toggle-types');
+  const own = ((current && current.types) || []).length;
+
+  if (!own) {
+    button.style.display = 'none';
+    return;
+  }
+
+  button.style.display = '';
+  button.textContent = state.types
+    ? `hide the ${own} types declared here`
+    : `show the ${own} types declared here`;
+  button.onclick = () => {
+    state.types = !state.types;
+    render();
+    restore();
+  };
+}
+
 function renderCounts(nodes, current) {
   const scope = current ? [current] : MODEL.nodes;
   const within = new Set(scope.flatMap(n => idsUnder(n)));
@@ -510,9 +560,29 @@ function count(nodes, fits) {
   return n;
 }
 
+// Everything declared under a container, with the name of the container
+// that declares it when that is not this one.
+//
+// The panel used to list only what a container declared directly, while the
+// box above it counted everything beneath. A module of two hundred types
+// said "203 types" on the canvas and showed none in the panel, and the
+// screen contradicting itself is worse than either number alone.
+function typesUnder(n) {
+  const found = (n.types || []).map(t => ({ type: t, from: null }));
+
+  for (const c of n.children || []) {
+    for (const x of typesUnder(c)) {
+      found.push({ type: x.type, from: x.from || c.label });
+    }
+  }
+
+  return found;
+}
+
 function select(n) {
   const panel = document.getElementById('panel');
-  const types = n.types || [];
+  const declared = typesUnder(n);
+  const types = declared.map(x => x.type);
   const bad = MODEL.edges.filter(e => e.violates && idsUnder(n).includes(e.from));
   // Targets, not edges: several projects of a module may reference the same
   // thing, and listing it twice says nothing the first line did not.
@@ -558,7 +628,16 @@ function select(n) {
 
   if (types.length) {
     html += `<h2>Types (${types.length})</h2>`;
-    types.forEach((t, i) => {
+    let group;
+    declared.forEach((entry, i) => {
+      const t = entry.type;
+
+      // A heading per container below this one, so a name in the list is
+      // never detached from the thing that declares it.
+      if (entry.from !== group) {
+        group = entry.from;
+        if (group) html += `<div class="own-types">${esc(group)}</div>`;
+      }
       const open = state.openType === t.id;
       html += `<div class="type${open ? ' open' : ''}">`;
       html += `<div class="head" data-type="${i}">`;
@@ -578,9 +657,10 @@ function select(n) {
       }
       html += `</div>`;
     });
-  } else if (!n.children || n.children.length === 0) {
-    // What an empty container means is the extractor's to say, not this
-    // page's: it differs by ecosystem, and this page knows of none.
+  } else {
+    // Nothing anywhere beneath it, not merely nothing at this level. What
+    // an empty container means is the extractor's to say, not this page's:
+    // it differs by ecosystem, and this page knows of none.
     html += `<h2>Types</h2><p class="empty">${esc(n.note || 'Nothing was read in this container.')}</p>`;
   }
 
@@ -674,6 +754,7 @@ function readAddress() {
   state.path = at ? at.split('\u007c').filter(Boolean) : [];
   state.selected = parts.get('box');
   state.openType = parts.get('type');
+  state.types = parts.get('types') !== '0';
 }
 
 function writeAddress() {
@@ -681,6 +762,7 @@ function writeAddress() {
   if (state.path.length) parts.set('at', state.path.join('\u007c'));
   if (state.selected) parts.set('box', state.selected);
   if (state.openType) parts.set('type', state.openType);
+  if (!state.types) parts.set('types', '0');
   const next = '#' + parts.toString();
   if (next !== location.hash) history.replaceState(null, '', next);
 }

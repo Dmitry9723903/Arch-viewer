@@ -640,14 +640,78 @@ public sealed class AssemblyFacts : IDisposable
             return "enum";
         }
 
+        // A delegate is a sealed class deriving from MulticastDelegate, and a
+        // record is a class with a compiler-written clone method. Both came
+        // out as "class", so a repository with a hundred delegates showed a
+        // hundred classes and the screen could not say which was which — the
+        // stereotype is the one word a reader has for what a type is.
+        if (IsDelegate(type))
+        {
+            return "delegate";
+        }
+
+        var record = IsRecord(type);
+
         if (type.IsValueType)
         {
-            return "struct";
+            return record ? "record struct" : "struct";
+        }
+
+        if (record)
+        {
+            return "record";
         }
 
         return type.IsAbstract && type.IsSealed ? "static"
             : type.IsAbstract ? "abstract"
             : "class";
+    }
+
+    /// <summary>
+    /// Whether the type is a delegate, judged by what it derives from rather
+    /// than by its name.
+    /// </summary>
+    private static bool IsDelegate(Type type)
+    {
+        try
+        {
+            for (var at = type.BaseType; at is not null; at = at.BaseType)
+            {
+                if (at.FullName is "System.MulticastDelegate" or "System.Delegate")
+                {
+                    return true;
+                }
+            }
+        }
+        catch (Exception e) when (Unresolvable(e))
+        {
+            // A base type in an assembly nobody handed us. Not a delegate as
+            // far as anything here can tell, and saying so beats guessing.
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Whether the type is a record. C# leaves no keyword in metadata, only
+    /// the clone method the compiler writes for one — which is the reason
+    /// this is read rather than assumed.
+    /// </summary>
+    private static bool IsRecord(Type type)
+    {
+        try
+        {
+            return type
+                .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                .Any(m => m.Name == "<Clone>$")
+                || type
+                    .GetProperties(BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                    .Any(p => p.Name == "EqualityContract");
+        }
+        catch (Exception e) when (Unresolvable(e))
+        {
+            return false;
+        }
     }
 
     private static string Pretty(string name)
