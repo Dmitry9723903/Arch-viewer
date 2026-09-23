@@ -387,11 +387,25 @@ def main() -> int:
         print(f"No such directory: {root}", file=sys.stderr)
         return 1
 
+    everything = list(root.rglob("*.py"))
     files = [
         p
-        for p in root.rglob("*.py")
+        for p in everything
         if not any(part in SKIP for part in p.relative_to(root).parts)
     ]
+
+    # What was passed over, and under which name. A repository of seven
+    # hundred files read as four hundred and forty-two says nothing about
+    # the other two hundred and seventy unless it is made to: they were
+    # Django migrations, which is a good reason and still a reason worth
+    # stating rather than assuming the reader guesses it.
+    passed: dict[str, int] = {}
+
+    for path in everything:
+        for part in path.relative_to(root).parts:
+            if part in SKIP:
+                passed[part] = passed.get(part, 0) + 1
+                break
 
     modules = [m for m in (read_module(root, p) for p in files) if m is not None]
     model = build(root, modules, arguments.title or root.name, arguments.depth)
@@ -419,6 +433,13 @@ def main() -> int:
     print(f"types      {declared}")
     print(f"edges      {len(model['edges'])}")
     print(f"written    {arguments.out}")
+
+    if passed:
+        print()
+        named = ", ".join(
+            f"{count} in {name}/" for name, count in sorted(passed.items(), key=lambda x: -x[1])
+        )
+        print(f"{sum(passed.values())} files were passed over: {named}")
 
     unreadable = len(files) - len(modules)
     if unreadable:
