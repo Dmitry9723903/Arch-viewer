@@ -35,6 +35,7 @@ _KINDS: dict[str, DeclarationKind] = {
     "UNION_DECL": DeclarationKind.UNION,
     "ENUM_DECL": DeclarationKind.ENUM,
     "CLASS_TEMPLATE": DeclarationKind.CLASS,
+    "FUNCTION_DECL": DeclarationKind.FUNCTION,
 }
 
 
@@ -105,10 +106,12 @@ class ClangDeclarationReader:
                 full,
                 args=arguments,
                 unsaved_files=[(full, text)],
-                options=(
-                    cindex.TranslationUnit.PARSE_SKIP_FUNCTION_BODIES
-                    | cindex.TranslationUnit.PARSE_INCOMPLETE
-                ),
+                # Bodies are parsed, though skipping them would be faster.
+                # A function with its body skipped cannot be told from a
+                # prototype, and this tool draws definitions only: with the
+                # bodies gone, every free function vanished and every header
+                # promise would have taken its place.
+                options=cindex.TranslationUnit.PARSE_INCOMPLETE,
             )
         except Exception:
             self.files_with_errors += 1
@@ -141,6 +144,12 @@ class ClangDeclarationReader:
                 continue
 
             kind = _KINDS.get(child.kind.name)
+
+            # A member defined out of line — `Sensor::read(…) { … }` — belongs
+            # to its type, which lists it already. Drawn again beside the type
+            # it would put one member on the map twice.
+            if kind is DeclarationKind.FUNCTION and _belongs_to_a_type(child):
+                continue
 
             if kind is not None and child.is_definition() and child.spelling:
                 into.append(self._declaration(child, kind, path, lines))
@@ -204,6 +213,15 @@ class ClangDeclarationReader:
             text += f"\n… {last - first + 1 - limit} more lines"
 
         return text
+
+
+def _belongs_to_a_type(cursor) -> bool:
+    """Whether a function is a member declared outside its type's body."""
+    parent = cursor.semantic_parent
+
+    return parent is not None and parent.kind.name in (
+        "CLASS_DECL", "STRUCT_DECL", "UNION_DECL", "CLASS_TEMPLATE",
+    )
 
 
 def _libclang() -> str | None:

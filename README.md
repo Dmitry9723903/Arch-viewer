@@ -136,17 +136,24 @@ language's own parser.
 
 | Ecosystem | Reads | How | Needs |
 |---|---|---|---|
-| .NET — C# | projects, namespaces, types, members, wiring in a composition root | compiled assemblies and their PDBs, through `MetadataLoadContext` | .NET SDK 10; the repository must build |
-| C, C++ | Visual C++ projects, types, base classes, `#include` between modules | project files for the structure; clang where installed, this tool's own C++ tokeniser otherwise | Python 3.10+; nothing must be built |
-| Python | packages, modules, classes, module-level functions | the `ast` module of the language itself | Python 3.10+ |
-| TypeScript, JavaScript | folders, modules, classes, interfaces, enums | the TypeScript compiler **of the repository being read** | Node.js 18+, and `npm install` in that repository |
-| PHP | namespaces, classes, interfaces, traits, enums | `nikic/PHP-Parser` when composer has installed it, the language's own tokeniser otherwise | PHP 8.0+ |
-| Delphi, Object Pascal | units, `uses` between them, classes, records, interfaces, enumerations | its own tokeniser; a compiler directive is not a comment | Python 3.10+ |
+| .NET — C# | projects, namespaces, classes, records, structs, enums, interfaces, delegates, members, wiring in a composition root | compiled assemblies and their PDBs, through `MetadataLoadContext` | .NET SDK 10; the repository must build |
+| C, C++ | Visual C++ projects, types, base classes, **free functions**, `#include` between modules | project files for the structure; clang where installed, this tool's own C++ tokeniser otherwise | Python 3.10+; nothing must be built |
+| Python | packages, modules, classes, **module-level functions** | the `ast` module of the language itself | Python 3.10+ |
+| TypeScript, JavaScript | folders, modules, classes, interfaces, enums, type aliases, **functions** | the TypeScript compiler **of the repository being read** | Node.js 18+, and `npm install` in that repository |
+| PHP | namespaces, classes, interfaces, traits, enums, **free functions** | `nikic/PHP-Parser` when composer has installed it, the language's own tokeniser otherwise | PHP 8.0+ |
+| Delphi, Object Pascal | units, `uses` between them, classes, records, interfaces, enumerations, **routines**, procedural types | its own tokeniser; a compiler directive is not a comment | Python 3.10+ |
 | SQL | tables, views, procedures, functions, triggers, and what each one names | its own tokeniser; comments and string literals are not code | Python 3.10+ |
 
 Nothing else is read. Java, Go and Rust are counted and named as
 unread rather than passed over in silence — the command tells you how many
 files of them it found and left alone.
+
+**A function is a declaration too.** A repository written as functions —
+most C, most legacy PHP, most TypeScript — used to read as empty, because
+only types were collected. One legacy repository went from 5,054
+declarations to 15,505 when its free functions were read; its map had been
+showing a tenth of it. A function that is a member of a type stays inside
+that type, where it was written.
 
 **The rules are checked the same way for all of them.** A policy is applied
 by one implementation, to whatever model an extractor produced. Until that

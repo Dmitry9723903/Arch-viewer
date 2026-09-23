@@ -51,6 +51,11 @@ KINDS = {
 
 MEMBER_WORDS = {"procedure", "function", "constructor", "destructor", "property"}
 
+# A routine written at unit level belongs to the unit, not to a type. Pascal
+# units are largely made of these, and a unit read without them is a unit
+# read as empty.
+ROUTINE_WORDS = {"procedure", "function"}
+
 
 @dataclass(frozen=True)
 class Token:
@@ -226,6 +231,11 @@ def read(path: Path, relative: str, with_source: bool) -> Unit | None:
             index += 1
             continue
 
+        if word in ROUTINE_WORDS:
+            index = _routine(tokens, index, unit, lines, with_source)
+            in_type = False
+            continue
+
         if word in ("var", "const", "implementation", "begin", "resourcestring"):
             in_type = word == "implementation" and in_type
             index += 1
@@ -245,6 +255,119 @@ def read(path: Path, relative: str, with_source: bool) -> Unit | None:
         index += 1
 
     return unit
+
+
+def _routine(
+    tokens: list[Token], index: int, unit: Unit, lines: list[str], with_source: bool
+) -> int:
+    """`procedure Draw(x: Integer);` or `function Sum(…): Integer; begin … end;`
+
+    A unit declares its routines twice — once in the interface and once where
+    they are written — and they are one routine, not two. The definition wins
+    when there is one, because it is the thing with a body to show.
+    """
+    word = tokens[index].word
+    first = tokens[index].line
+    scan = index + 1
+
+    if scan >= len(tokens) or not tokens[scan].text[:1].isalpha():
+        return scan
+
+    name = tokens[scan].text
+
+    # `procedure TForm1.Draw;` defines a method of a type, which the type
+    # itself already lists. Recording it here would put it on the map twice.
+    qualified = scan + 1 < len(tokens) and tokens[scan + 1].text == "."
+
+    if qualified:
+        return _past_routine(tokens, scan + 1)[0]
+
+    arguments: list[str] = []
+    depth = 0
+    scan += 1
+
+    while scan < len(tokens):
+        token = tokens[scan]
+
+        if token.text == "(":
+            depth += 1
+        elif token.text == ")":
+            depth -= 1
+        elif token.text == ";" and depth == 0:
+            scan += 1
+            break
+        elif depth == 1 and not token.string and token.text[:1].isalpha():
+            if token.word not in ("var", "const", "out", "array", "of"):
+                arguments.append(token.text)
+
+        scan += 1
+
+    after, last, bodied = _past_routine(tokens, scan)
+
+    existing = next((t for t in unit.types if t.name.lower() == name.lower()), None)
+
+    if existing is not None and not bodied:
+        return after
+
+    declared = Declared(
+        name=name,
+        kind="function" if word == "function" else "procedure",
+        line=first,
+        end_line=max(first, last),
+    )
+    declared.members = [{"text": a, "line": first} for a in arguments[:20]]
+    _finish(declared, lines, with_source)
+
+    if existing is not None:
+        unit.types.remove(existing)
+
+    unit.types.append(declared)
+    return after
+
+
+def _past_routine(tokens: list[Token], index: int) -> tuple[int, int, bool]:
+    """Past a routine: its body when it has one, its semicolon when it does not."""
+    scan = index
+    last = tokens[min(index, len(tokens) - 1)].line
+
+    while scan < len(tokens):
+        token = tokens[scan]
+        word = token.word
+
+        if token.string:
+            scan += 1
+            continue
+
+        # Another routine begins: this one was a declaration with no body.
+        if word in ROUTINE_WORDS or word in ("implementation", "initialization", "end"):
+            return scan, last, False
+
+        if word == "begin":
+            depth = 0
+
+            while scan < len(tokens):
+                inner = tokens[scan]
+
+                if inner.string:
+                    scan += 1
+                    continue
+
+                if inner.word in OPENS or inner.word == "begin":
+                    depth += 1
+                elif inner.word == "end":
+                    depth -= 1
+
+                    if depth == 0:
+                        return scan + 1, inner.line, True
+
+                scan += 1
+
+            return scan, last, True
+
+        last = token.line
+        scan += 1
+
+    return scan, last, False
 
 
 def _uses(tokens: list[Token], index: int, unit: Unit) -> int:
@@ -296,6 +419,21 @@ def _declaration(
     # `TFoo = class of TBar;` and `TFoo = class;` declare no body.
     if word == "class" and scan + 1 < len(tokens) and tokens[scan + 1].word == "of":
         return _to_semicolon(tokens, scan)
+
+    # `TCallback = function (x: Integer): Boolean;` — a procedural type, which
+    # is Pascal's delegate: a first-class function with a name of its own.
+    if word in ROUTINE_WORDS:
+        declared = Declared(
+            name,
+            "function type" if word == "function" else "procedure type",
+            first,
+            first,
+        )
+        scan = _to_semicolon(tokens, scan)
+        declared.end_line = tokens[min(scan, len(tokens) - 1)].line
+        _finish(declared, lines, with_source)
+        unit.types.append(declared)
+        return scan
 
     if word not in KINDS:
         # An enumeration: `TStyle = (asLeft, asRight);`
@@ -422,11 +560,30 @@ def _enumeration(tokens: list[Token], index: int, declared: Declared) -> int:
 
 
 def _to_semicolon(tokens: list[Token], index: int) -> int:
-    """Past the end of a declaration that has no body."""
-    while index < len(tokens) and tokens[index].text != ";":
+    """Past the end of a declaration that has no body.
+
+    Parentheses are counted, because a procedural type separates its own
+    parameters with semicolons — `= function (a: Pointer; b: Integer)` — and
+    stopping at the first of those leaves the reader standing in the middle
+    of a declaration. Everything after it is then read as if it were top
+    level: a class becomes invisible and its methods become routines of the
+    unit.
+    """
+    depth = 0
+
+    while index < len(tokens):
+        text = tokens[index].text
+
+        if text == "(":
+            depth += 1
+        elif text == ")":
+            depth -= 1
+        elif text == ";" and depth <= 0:
+            return index + 1
+
         index += 1
 
-    return index + 1
+    return index
 
 
 def _finish(declared: Declared, lines: list[str], with_source: bool) -> None:

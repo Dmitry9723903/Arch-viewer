@@ -7,5 +7,6 @@
   <ItemGroup>
     <ClInclude Include="Units.h" />
     <ClInclude Include="Result.h" />
+    <ClCompile Include="Convert.cpp" />
   </ItemGroup>
 </Project>

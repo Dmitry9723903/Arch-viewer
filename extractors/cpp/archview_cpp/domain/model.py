@@ -20,6 +20,7 @@ class DeclarationKind(str, Enum):
     UNION = "union"
     ENUM = "enum"
     NAMESPACE = "namespace"
+    FUNCTION = "function"
 
 
 @dataclass(frozen=True)

@@ -149,6 +149,37 @@ function readWithParser(string $root, string $file): array
                 continue;
             }
 
+            // A function declared outside any class is a thing the file
+            // declares, and in PHP of this age most files declare nothing
+            // else. Left out, such a file reads as empty.
+            if ($node instanceof PhpParser\Node\Stmt\Function_ && $node->name !== null) {
+                $start = $node->getStartLine();
+                if ($doc = $node->getDocComment()) {
+                    $start = $doc->getStartLine();
+                }
+
+                $args = implode(', ', array_map(
+                    static fn($p) => is_string($p->var->name) ? '$' . $p->var->name : '$?',
+                    $node->params
+                ));
+
+                $name = $node->name->toString();
+                $relative = relative($root, $file);
+                $types[] = [
+                    'id' => ($namespace !== '' ? $namespace . '\\' : '') . $name,
+                    'name' => $name . "({$args})",
+                    'stereotype' => 'function',
+                    'visibility' => 'public',
+                    'file' => $relative,
+                    'line' => $start,
+                    'endLine' => $node->getEndLine(),
+                    'source' => fragment($lines, $start, $node->getEndLine()),
+                    'members' => [],
+                    'bases' => [],
+                ];
+                continue;
+            }
+
             if (!($node instanceof PhpParser\Node\Stmt\ClassLike) || $node->name === null) {
                 continue;
             }
@@ -262,10 +293,27 @@ function readWithTokens(string $root, string $file): array
         return ['', $from];
     };
 
+    // Depth, so that a function inside a class is read as the method it is
+    // and only a function at the top of a file counts as one this file
+    // declares. An interpolated string opens its brace as a token of its own
+    // and closes it with a plain one, so both openers are counted.
+    $depth = 0;
+
     for ($i = 0; $i < $count; $i++) {
         $token = $tokens[$i];
 
         if (!is_array($token)) {
+            if ($token === '{') {
+                $depth++;
+            } elseif ($token === '}') {
+                $depth--;
+            }
+
+            continue;
+        }
+
+        if (in_array($token[0], [T_CURLY_OPEN, T_DOLLAR_OPEN_CURLY_BRACES], true)) {
+            $depth++;
             continue;
         }
 
@@ -280,6 +328,67 @@ function readWithTokens(string $root, string $file): array
             if ($name !== '') {
                 $imports[] = $name;
             }
+            continue;
+        }
+
+        if ($token[0] === T_FUNCTION && $depth === 0) {
+            [$name, $at] = $word($tokens, $i + 1, $count);
+
+            // "function () { … }" assigned to something declares no name.
+            if ($name === '') {
+                continue;
+            }
+
+            $args = [];
+            $end = $token[2];
+            $braces = 0;
+            $opened = false;
+
+            for ($j = $at; $j < $count; $j++) {
+                $body = $tokens[$j];
+
+                if (is_string($body)) {
+                    if ($body === '{') { $braces++; $opened = true; }
+                    elseif ($body === '}') {
+                        $braces--;
+                        if ($opened && $braces === 0) {
+                            $end = $body === '}' && is_array($tokens[$j - 1] ?? null)
+                                ? $tokens[$j - 1][2]
+                                : $end;
+                            break;
+                        }
+                    } elseif ($body === ';' && !$opened) {
+                        // An interface-style declaration with no body.
+                        break;
+                    }
+                } elseif (is_array($body)) {
+                    $end = $body[2];
+
+                    if (!$opened && $body[0] === T_VARIABLE) {
+                        $args[] = $body[1];
+                    }
+                }
+            }
+
+            $above = $token[2];
+            while ($above > 1 && trim($lines[$above - 2] ?? '') !== ''
+                   && preg_match('/^\s*(\*|\/\*|\/\/|#\[)/', $lines[$above - 2])) {
+                $above--;
+            }
+
+            $types[] = [
+                'id' => ($namespace !== '' ? $namespace . '\\' : '') . $name,
+                'name' => $name . '(' . implode(', ', $args) . ')',
+                'stereotype' => 'function',
+                'visibility' => 'public',
+                'file' => $relative,
+                'line' => $above,
+                'endLine' => max($end, $token[2]),
+                'source' => fragment($lines, $above, max($end, $token[2])),
+                'members' => [],
+                'bases' => [],
+            ];
+
             continue;
         }
 

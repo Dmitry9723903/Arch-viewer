@@ -21,6 +21,21 @@ _TYPE_KEYWORDS = {
     "enum": DeclarationKind.ENUM,
 }
 
+# Words that open a statement, not a declaration. `if (x) { … }` has the
+# shape of a function definition to anything that only looks for a name, a
+# parameter list and a brace.
+_STATEMENTS = {
+    "if", "for", "while", "switch", "catch", "return", "sizeof", "do", "else",
+    "case", "throw", "new", "delete", "and", "or", "not", "alignof", "decltype",
+    "static_assert", "noexcept", "typeid", "assert",
+}
+
+# What may stand between a parameter list and the body of a function.
+_AFTER_PARAMETERS = {
+    "const", "noexcept", "override", "final", "mutable", "volatile", "throw",
+    "__declspec", "_NOEXCEPT",
+}
+
 _NOT_A_NAME = {
     "final",
     "sealed",
@@ -211,6 +226,16 @@ class _Walk:
                 template_line = None
                 continue
 
+            # A function written at namespace scope is a thing the file
+            # declares, exactly as a class is, and in C it is the only thing
+            # a file declares at all.
+            moved = self._function(index, template_line)
+
+            if moved is not None:
+                template_line = None
+                index = moved
+                continue
+
             self._member(index)
             template_line = None
             index += 1
@@ -364,6 +389,149 @@ class _Walk:
 
         return scan + 1, True
 
+    def _function(self, index: int, template_line: int | None) -> int | None:
+        """A function defined at namespace scope: `int add(int a, int b) { … }`.
+
+        Only a definition, never a prototype, for the same reason only a class
+        with a body is drawn: a name promised elsewhere is not a thing this
+        file holds.
+
+        A qualified name — `Sensor::read(…)` — defines a member out of line.
+        It belongs to its type, which already lists it, and drawing it again
+        beside the type would put one member on the map twice.
+        """
+        if any(scope.is_type for scope in self._scopes):
+            return None
+
+        token = self._tokens[index]
+
+        if token.text in _STATEMENTS or token.text in _NOT_A_NAME:
+            return None
+
+        if index + 1 >= len(self._tokens) or self._tokens[index + 1].text != "(":
+            return None
+
+        previous = self._tokens[index - 1] if index else None
+
+        if previous is not None and previous.text in (":", ".", "~", "#"):
+            return None
+
+        if not self._opens_declaration(index):
+            return None
+
+        after = _past_parentheses(self._tokens, index + 1)
+        scan = after
+
+        while scan < len(self._tokens):
+            following = self._tokens[scan]
+
+            if following.kind is TokenKind.IDENTIFIER and following.text in _AFTER_PARAMETERS:
+                scan += 1
+                continue
+
+            if following.kind is TokenKind.PUNCTUATION and following.text in ("-", ">", "&", "*"):
+                scan += 1
+                continue
+
+            break
+
+        if scan >= len(self._tokens) or self._tokens[scan].text != "{":
+            return None
+
+        first = template_line or self._return_line(index)
+        end = self._closing(scan)
+
+        if end is None:
+            return None
+
+        self._found.append(
+            Declaration(
+                name=self._tokens[index].text,
+                kind=DeclarationKind.FUNCTION,
+                path=self._path,
+                span=Span(first, max(end, first)),
+                qualifier=self._qualifier,
+                stereotype="function",
+                source=self._text(first, end),
+            )
+        )
+
+        return end_index(self._tokens, scan)
+
+    def _opens_declaration(self, index: int) -> bool:
+        """Whether a declaration can begin where this name's head would begin.
+
+        A name, a parameter list and a brace are also the shape of an entry in
+        a constructor's initialiser list — `: Sensor(address), _port(port) {}`
+        — and of a good deal else. What distinguishes a definition is what
+        stands before its return type: the end of the previous statement, and
+        nothing else.
+        """
+        scan = index - 1
+
+        while scan >= 0:
+            token = self._tokens[scan]
+
+            if token.kind is TokenKind.DIRECTIVE:
+                return True
+
+            if token.kind is TokenKind.PUNCTUATION:
+                if token.text in (";", "}", "{"):
+                    return True
+
+                if token.text in ("*", "&", ":", "<", ">", "[", "]"):
+                    scan -= 1
+                    continue
+
+                return False
+
+            if token.kind is TokenKind.IDENTIFIER:
+                if token.text in _STATEMENTS:
+                    return False
+
+                scan -= 1
+                continue
+
+            return False
+
+        return True
+
+    def _return_line(self, index: int) -> int:
+        """The line the declaration starts on, return type included."""
+        line = self._tokens[index].line
+        scan = index - 1
+
+        while scan >= 0 and self._tokens[scan].line >= line - 2:
+            token = self._tokens[scan]
+
+            if token.kind is TokenKind.PUNCTUATION and token.text in (";", "}", "{"):
+                break
+
+            if token.kind is TokenKind.DIRECTIVE:
+                break
+
+            line = min(line, token.line)
+            scan -= 1
+
+        return line
+
+    def _closing(self, brace: int) -> int | None:
+        """The line of the brace closing the body that opens at that token."""
+        depth = 0
+
+        for scan in range(brace, len(self._tokens)):
+            text = self._tokens[scan].text
+
+            if text == "{":
+                depth += 1
+            elif text == "}":
+                depth -= 1
+
+                if depth == 0:
+                    return self._tokens[scan].line
+
+        return None
+
     def _bases(self, index: int) -> tuple[int, list[str]]:
         """The base list, reduced to the name of each base."""
         bases: list[str] = []
@@ -515,6 +683,24 @@ class _Walk:
             text += f"\n… {last - first + 1 - limit} more lines"
 
         return text
+
+
+def end_index(tokens, brace: int) -> int:
+    """The token after the brace that closes the body opening at `brace`."""
+    depth = 0
+
+    for scan in range(brace, len(tokens)):
+        text = tokens[scan].text
+
+        if text == "{":
+            depth += 1
+        elif text == "}":
+            depth -= 1
+
+            if depth == 0:
+                return scan + 1
+
+    return len(tokens)
 
 
 def _past_parentheses(tokens, index: int) -> int:

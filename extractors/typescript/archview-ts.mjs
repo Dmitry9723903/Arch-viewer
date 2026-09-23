@@ -119,9 +119,15 @@ function readModule(ts, root, file) {
   const types = [];
   const imports = new Set();
 
+  // A function declared at the top of a module is a thing this repository
+  // declares, exactly as a class is. The stereotype for one existed here
+  // from the start and nothing ever produced it: the filter below left
+  // functions out, so a module written as functions — which is most
+  // TypeScript — came out empty.
   const declares = node =>
     ts.isClassDeclaration(node) || ts.isInterfaceDeclaration(node)
-    || ts.isEnumDeclaration(node) || ts.isTypeAliasDeclaration(node);
+    || ts.isEnumDeclaration(node) || ts.isTypeAliasDeclaration(node)
+    || ts.isFunctionDeclaration(node);
 
   for (const node of source.statements) {
     if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node))
