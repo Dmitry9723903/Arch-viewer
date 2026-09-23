@@ -187,7 +187,11 @@ public static class Program
                 $"           {facts.PassedOver} older copies passed over; the newest of each was read");
         }
 
-        var stale = Stale(model.Nodes, facts.Built);
+        // Asked for no source, told that none is shown, and sent to rebuild
+        // the repository to fix it. The count was right and the sentence was
+        // nonsense: it named a cause that was not the cause and a remedy
+        // that would change nothing.
+        var stale = facts.WithoutSource ? 0 : Stale(model.Nodes, facts.Built);
 
         if (stale > 0)
         {
