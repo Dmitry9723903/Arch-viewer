@@ -135,11 +135,43 @@ internal static class Registrations
 
             foreach (var argument in arguments)
             {
-                if (known.Contains(argument))
+                // Every type the argument names, not only the outermost. A
+                // call may hand over a type of this repository wrapped in a
+                // collection, a task, a result — at any depth — and the
+                // wrapper is the framework's while the contents are ours.
+                foreach (var named in Mentioned(argument))
                 {
-                    yield return argument;
+                    if (known.Contains(named))
+                    {
+                        yield return named;
+                    }
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Every type named inside a decoded type name, the wrapper included.
+    /// </summary>
+    /// <param name="name">A name such as Outer&lt;Inner&lt;Leaf&gt;,Other&gt;.</param>
+    /// <returns>Each name it mentions, outermost first.</returns>
+    private static IEnumerable<string> Mentioned(string name)
+    {
+        var start = 0;
+
+        for (var i = 0; i <= name.Length; i++)
+        {
+            if (i < name.Length && name[i] is not ('<' or '>' or ','))
+            {
+                continue;
+            }
+
+            if (i > start)
+            {
+                yield return name[start..i];
+            }
+
+            start = i + 1;
         }
     }
 
@@ -309,9 +341,21 @@ internal sealed class TypeNames : ISignatureTypeProvider<string, object?>
         byte rawTypeKind) =>
         metadata.GetTypeSpecification(handle).DecodeSignature(this, genericContext);
 
-    /// <summary>A generic such as a collection: named by its definition.</summary>
+    /// <summary>
+    /// A constructed generic, named with the arguments it was given.
+    /// <para>
+    /// Naming it by its definition alone threw the arguments away, and with
+    /// them the only part that says anything about this repository:
+    /// <c>.Produces&lt;IReadOnlyList&lt;ActiveGrantView&gt;&gt;()</c> came
+    /// back as <c>IReadOnlyList</c>, which belongs to the framework and
+    /// matches nothing here, so the reference to ActiveGrantView was not
+    /// recorded at all. The same call written without the collection was.
+    /// </para>
+    /// </summary>
     public string GetGenericInstantiation(string genericType, ImmutableArray<string> typeArguments) =>
-        genericType;
+        typeArguments.IsDefaultOrEmpty
+            ? genericType
+            : $"{genericType}<{string.Join(",", typeArguments)}>";
 
     /// <summary>An array is named by what it holds.</summary>
     public string GetSZArrayType(string elementType) => elementType;

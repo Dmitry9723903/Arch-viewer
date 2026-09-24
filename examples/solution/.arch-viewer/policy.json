@@ -40,5 +40,6 @@
     "kind": "namespace",
     "trimAssemblyPrefix": true,
     "edges": true
-  }
+  },
+  "readRegistrations": true
 }

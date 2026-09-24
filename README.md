@@ -299,16 +299,23 @@ rather than pretending there are none.
 dotnet src/ArchViewer.Extract/bin/Debug/net10.0/archview.dll all examples/solution --out example.html
 ```
 
-Six projects, eight references, one nested namespace in each domain, and
-exactly one crossing drawn red — the adapter that reaches into another
-module's application layer. It is recorded twice, once between the projects
-and once between the types, because both are true; it is one boundary
-broken, and counted as one:
+Six projects, eleven types, twenty references, one nested namespace in each
+domain, and exactly one crossing drawn red — the adapter that reaches into
+another module's application layer. It is recorded twice, once between the
+projects and once between the types, because both are true; it is one
+boundary broken, and counted as one:
 
 ![The violation, drawn red and named](docs/screenshot-violation.png)
 
 The panel names the rule that was broken, not merely that something was. A red
 arrow you cannot act on is decoration.
+
+It also carries a composition root, because that part of the tool cannot be
+exercised without one. `Wiring.Compose` offers three types: one written
+plainly, one wrapped in a collection, and one wrapped twice. All three are
+drawn. A reader that keeps only the outermost name of a generic draws the
+first and silently loses the other two, which is what this example exists to
+catch.
 
 There is a PHP example too, at `examples/php`:
 
